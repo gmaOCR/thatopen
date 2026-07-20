@@ -122,17 +122,32 @@ const IFCViewer: FC = () => {
     if (!box.isEmpty()) void world.camera.controls.fitToBox(box, true);
   }, [world, loadedModels]);
 
-  // --- Correctif rendu : force le chargement de TOUTES les tuiles après chargement,
-  //     et cadre la vue sur le 1er modèle (évite un rendu partiel dû au culling). ---
+  // --- Chargement complet (force toutes les tuiles) puis, sur le 1er modèle :
+  //     aligne sa base sur la grille (y=0), le centre en x/z, et cadre la vue.
+  //     `update(true)` résout quand toute la géométrie est chargée -> bbox fiable. ---
   useEffect(() => {
     if (!components || !world || loadedModels.length === 0) return;
     const fragments = components.get(OBC.FragmentsManager);
-    void fragments.core.update(true);
-    if (!fittedOnce.current) {
+    let cancelled = false;
+    void fragments.core.update(true).then(() => {
+      if (cancelled || fittedOnce.current) return;
       fittedOnce.current = true;
-      const t = setTimeout(() => fitView(), 400);
-      return () => clearTimeout(t);
-    }
+      const first = loadedModels[0]?.model;
+      if (first) {
+        const box = new THREE.Box3().setFromObject(first.object);
+        if (!box.isEmpty()) {
+          const c = box.getCenter(new THREE.Vector3());
+          first.object.position.x -= c.x; // centré sur l'origine
+          first.object.position.z -= c.z;
+          first.object.position.y -= box.min.y; // base posée sur la grille (y=0)
+          first.object.updateMatrixWorld(true);
+        }
+      }
+      fitView();
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [loadedModels, components, world, fitView]);
 
   // --- Outil coupe (Clipper) ---
