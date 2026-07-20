@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FC, ChangeEvent } from 'react';
+import * as THREE from 'three';
 import * as OBC from '@thatopen/components';
 import * as OBF from '@thatopen/components-front';
 import * as CUI from '@thatopen/ui-obc';
 import { useRenderer } from '../../hooks/useRenderer';
 import { useIFCLoader } from '../../hooks/useIFCLoader';
 
-// ponytail: IFC brut au démarrage ; pré-conversion .frag = optimisation Phase ultérieure.
+// ponytail: IFC brut au démarrage ; pré-conversion .frag = optimisation ultérieure.
 const DEFAULT_MODEL_URL = '/models/demo.ifc';
 const DEFAULT_MODEL_ID = 'Duplex Apartment';
 
@@ -19,6 +20,7 @@ interface MenuDef {
 }
 
 const IFCViewer: FC = () => {
+  const appRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const leftPanelRef = useRef<HTMLDivElement>(null);
   const rightPanelRef = useRef<HTMLDivElement>(null);
@@ -36,7 +38,7 @@ const IFCViewer: FC = () => {
   const itemsUpdate = useRef<ItemsUpdate | null>(null);
   const spatialUpdate = useRef<SpatialUpdate | null>(null);
 
-  // --- Panneaux CUI + sélection (une fois le monde prêt) ---
+  // --- Panneaux CUI + sélection + survol (une fois le monde prêt) ---
   useEffect(() => {
     if (!isInitialized || !components || !world) return;
     const fragments = components.get(OBC.FragmentsManager);
@@ -45,6 +47,11 @@ const IFCViewer: FC = () => {
     const highlighter = components.get(OBF.Highlighter);
     highlighter.setup({ world });
     const selectName = highlighter.config.selectName;
+
+    // Survol : surligne l'élément sous le curseur
+    const hoverer = components.get(OBF.Hoverer);
+    hoverer.world = world;
+    hoverer.enabled = true;
 
     // Panneaux prêts (ui-obc)
     const [modelsListEl] = CUI.tables.modelsList(
@@ -79,6 +86,7 @@ const IFCViewer: FC = () => {
     fragments.list.onItemSet.add(refreshTree);
 
     return () => {
+      hoverer.enabled = false;
       events?.onHighlight.remove(onHighlight);
       events?.onClear.remove(onClear);
       fragments.list.onItemSet.remove(refreshTree);
@@ -109,7 +117,6 @@ const IFCViewer: FC = () => {
     const clipper = components.get(OBC.Clipper);
     clipper.setup();
     clipper.enabled = clipActive;
-
     if (!clipActive) return;
     const onDblClick = () => void clipper.create(world);
     const onKeyDown = (e: KeyboardEvent) => {
@@ -150,6 +157,7 @@ const IFCViewer: FC = () => {
     }
   };
 
+  // --- Contrôles de vue ---
   const recenter = useCallback(() => {
     void world?.camera.controls.setLookAt(15, 15, 15, 0, 0, 0, true);
   }, [world]);
@@ -158,29 +166,49 @@ const IFCViewer: FC = () => {
     void world?.camera.controls.setLookAt(0, 30, 0, 0, 0, 0, true);
   }, [world]);
 
+  const fitView = useCallback(() => {
+    if (!world || loadedModels.length === 0) return;
+    const box = new THREE.Box3();
+    for (const { model } of loadedModels) box.expandByObject(model.object);
+    if (!box.isEmpty()) void world.camera.controls.fitToBox(box, true);
+  }, [world, loadedModels]);
+
+  const toggleProjection = useCallback(() => {
+    if (!world) return;
+    const next = world.camera.projection.current === 'Perspective' ? 'Orthographic' : 'Perspective';
+    void world.camera.projection.set(next);
+  }, [world]);
+
+  const toggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) void appRef.current?.requestFullscreen();
+    else void document.exitFullscreen();
+  }, []);
+
+  const reloadDemo = useCallback(() => {
+    defaultLoaded.current = false;
+    setError(null);
+    void (async () => {
+      const res = await fetch(DEFAULT_MODEL_URL);
+      if (res.ok) await loadIFCBuffer(new Uint8Array(await res.arrayBuffer()), DEFAULT_MODEL_ID);
+    })();
+  }, [loadIFCBuffer]);
+
   const menus: MenuDef[] = [
     {
       label: 'Fichier',
       items: [
         { label: 'Ouvrir un IFC…', onClick: () => fileInputRef.current?.click() },
-        {
-          label: 'Recharger la maquette de démo',
-          onClick: () => {
-            defaultLoaded.current = false;
-            setError(null);
-            void (async () => {
-              const res = await fetch(DEFAULT_MODEL_URL);
-              if (res.ok) await loadIFCBuffer(new Uint8Array(await res.arrayBuffer()), DEFAULT_MODEL_ID);
-            })();
-          },
-        },
+        { label: 'Recharger la maquette de démo', onClick: reloadDemo },
       ],
     },
     {
       label: 'Vue',
       items: [
+        { label: 'Ajuster à la vue', onClick: fitView },
         { label: 'Recentrer (iso)', onClick: recenter },
         { label: 'Vue de dessus', onClick: topView },
+        { label: 'Projection ortho / perspective', onClick: toggleProjection },
+        { label: 'Plein écran', onClick: toggleFullscreen },
       ],
     },
     {
@@ -193,7 +221,7 @@ const IFCViewer: FC = () => {
   ];
 
   return (
-    <div className="app-container" onClick={() => openMenu && setOpenMenu(null)}>
+    <div className="app-container" ref={appRef} onClick={() => openMenu && setOpenMenu(null)}>
       {/* Topbar + menus */}
       <header className="viewer-topbar">
         <span className="viewer-brand">TechData · IFC Viewer</span>
@@ -210,13 +238,7 @@ const IFCViewer: FC = () => {
                 <ul className="menu-dropdown">
                   {menu.items.map((item) => (
                     <li key={item.label}>
-                      <button
-                        onClick={() => {
-                          item.onClick();
-                          setOpenMenu(null);
-                        }}
-                        disabled={item.disabled}
-                      >
+                      <button onClick={() => { item.onClick(); setOpenMenu(null); }} disabled={item.disabled}>
                         {item.label}
                       </button>
                     </li>
@@ -230,14 +252,11 @@ const IFCViewer: FC = () => {
           {isLoading ? 'Chargement…' : `${loadedModels.length} modèle(s)`}
         </span>
         {error && <span className="viewer-error">{error}</span>}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".ifc"
-          onChange={handleFileChange}
-          style={{ display: 'none' }}
-        />
+        <input ref={fileInputRef} type="file" accept=".ifc" onChange={handleFileChange} style={{ display: 'none' }} />
       </header>
+
+      {/* Barre de chargement (indéterminée) */}
+      {isLoading && <div className="viewer-loading" />}
 
       {/* Sidebar gauche : arbre spatial + liste des modèles */}
       <aside className="viewer-left">
@@ -256,13 +275,10 @@ const IFCViewer: FC = () => {
 
       {/* Toolbar bas */}
       <footer className="viewer-footer">
+        <button className="tool-btn" onClick={fitView}>Ajuster</button>
         <button className="tool-btn" onClick={recenter}>Recentrer</button>
-        <button className={`tool-btn ${clipActive ? 'active' : ''}`} onClick={() => setClipActive((v) => !v)}>
-          Coupe
-        </button>
-        <button className={`tool-btn ${measureActive ? 'active' : ''}`} onClick={() => setMeasureActive((v) => !v)}>
-          Mesure
-        </button>
+        <button className={`tool-btn ${clipActive ? 'active' : ''}`} onClick={() => setClipActive((v) => !v)}>Coupe</button>
+        <button className={`tool-btn ${measureActive ? 'active' : ''}`} onClick={() => setMeasureActive((v) => !v)}>Mesure</button>
         <span className="footer-hint">
           {clipActive || measureActive ? 'Double-clic sur la vue' : 'Duplex Apartment © buildingSMART · CC-BY 4.0'}
         </span>
