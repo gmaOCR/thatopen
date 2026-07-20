@@ -1,0 +1,62 @@
+name: Docker Build and Push (viewer)
+
+# Déclenchement MANUEL. Déploiement standard sur mercure : frontend/renderer/scripts/deploy-local.sh
+# (build LAN natif + push registry + GitOps). Cette CI reste un secours.
+on:
+  workflow_dispatch:
+
+env:
+  REGISTRY: ${{ secrets.REGISTRY_URL }}
+  IMAGE_NAME: viewer
+
+jobs:
+  build-and-push:
+    # Runner self-hosted arm64 sur mercure-rpi5 : build arm64 NATIF (pas de QEMU),
+    # push vers le registry via le LAN plutôt que le tunnel public.
+    runs-on: [self-hosted, arm64]
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          # network=host : le conteneur BuildKit éphémère doit pousser vers le
+          # registry via le LAN (/etc/hosts de mercure -> IP minikube).
+          driver-opts: network=host
+
+      - name: Log in to private registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Get current date (UTC)
+        id: date
+        # -u = UTC : garde les tags main-<ts> monotones pour l'ImagePolicy Flux.
+        run: echo "date=$(date -u +'%Y%m%d-%H%M%S')" >> $GITHUB_OUTPUT
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=pr
+            type=sha,format=short
+            type=raw,value=main-${{ steps.date.outputs.date }}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend/renderer
+          platforms: linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
