@@ -1,0 +1,12 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="TechData">
+  <defs>
+    <linearGradient id="tdg" x1="18" y1="24" x2="110" y2="104" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2f86dd"/>
+      <stop offset="1" stop-color="#37d4ee"/>
+    </linearGradient>
+  </defs>
+  <!-- D : anneau ouvert -->
+  <path d="M60 22h20a34 34 0 0 1 0 68H60V72h20a14 14 0 0 0 0-28H60V22Z" fill="url(#tdg)"/>
+  <!-- T : imbriqué dans le contrepoinçon du D -->
+  <path d="M24 22h48v18H55v50H41V40H24V22Z" fill="url(#tdg)"/>
+</svg>

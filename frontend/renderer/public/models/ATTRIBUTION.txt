@@ -1,0 +1,9 @@
+Maquette de démonstration : "Duplex Apartment" (Duplex_A_20110907.ifc)
+Source : buildingSMART Community Sample Test Files
+  https://github.com/buildingsmart-community/Community-Sample-Test-Files
+Licence : Creative Commons Attribution 4.0 International (CC-BY 4.0)
+  https://creativecommons.org/licenses/by/4.0/
+Attribution : « Duplex Apartment © buildingSMART, CC-BY 4.0 »
+
+Ce modèle est redistribué avec attribution conformément à la licence CC-BY 4.0.
+Un crédit visible sera intégré dans l'UI (Phase A).
