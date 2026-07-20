@@ -19,6 +19,22 @@ interface MenuDef {
   items: { label: string; onClick: () => void; disabled?: boolean }[];
 }
 
+type MeasureMode = 'none' | 'length' | 'area' | 'angle' | 'volume';
+
+const MEASURE_TOOLS = {
+  length: OBF.LengthMeasurement,
+  area: OBF.AreaMeasurement,
+  angle: OBF.AngleMeasurement,
+  volume: OBF.VolumeMeasurement,
+} as const;
+
+const MEASURE_LABELS: Record<Exclude<MeasureMode, 'none'>, string> = {
+  length: 'Mesure longueur',
+  area: 'Mesure surface',
+  angle: 'Mesure angle',
+  volume: 'Mesure volume',
+};
+
 const hasSelection = (map: OBC.ModelIdMap) => Object.keys(map).length > 0;
 
 const IFCViewer: FC = () => {
@@ -32,7 +48,7 @@ const IFCViewer: FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [clipActive, setClipActive] = useState(false);
-  const [measureActive, setMeasureActive] = useState(false);
+  const [measureMode, setMeasureMode] = useState<MeasureMode>('none');
   const [advancedRender, setAdvancedRender] = useState(false);
 
   const { components, world, isInitialized } = useRenderer(containerRef);
@@ -171,19 +187,34 @@ const IFCViewer: FC = () => {
     };
   }, [components, world, clipActive]);
 
-  // --- Outil mesure (longueur) ---
+  // --- Outils mesure (longueur / surface / angle / volume) ---
+  //     Double-clic = pose un point / valide ; Suppr = efface sous le curseur.
   useEffect(() => {
-    if (!components || !world) return;
+    if (!components || !world || measureMode === 'none') return;
     const container = containerRef.current;
     if (!container) return;
-    const dimensions = components.get(OBF.LengthMeasurement);
-    dimensions.world = world;
-    dimensions.enabled = measureActive;
-    if (!measureActive) return;
-    const onDblClick = () => void dimensions.create();
+    // get() renvoie le singleton correspondant à la classe passée ; le cast
+    // unifie juste le type (world/enabled/create/delete sont communs à toutes).
+    const tool = components.get(MEASURE_TOOLS[measureMode] as typeof OBF.LengthMeasurement);
+    tool.world = world;
+    tool.enabled = true;
+    const onDblClick = () => void tool.create();
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Delete' || e.code === 'Backspace') void tool.delete();
+    };
     container.addEventListener('dblclick', onDblClick);
-    return () => container.removeEventListener('dblclick', onDblClick);
-  }, [components, world, measureActive]);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      container.removeEventListener('dblclick', onDblClick);
+      window.removeEventListener('keydown', onKeyDown);
+      tool.enabled = false;
+    };
+  }, [components, world, measureMode]);
+
+  const toggleMeasure = useCallback(
+    (m: Exclude<MeasureMode, 'none'>) => setMeasureMode((cur) => (cur === m ? 'none' : m)),
+    [],
+  );
 
   const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -286,7 +317,10 @@ const IFCViewer: FC = () => {
       label: 'Outils',
       items: [
         { label: `${clipActive ? '✓ ' : ''}Plan de coupe`, onClick: () => setClipActive((v) => !v) },
-        { label: `${measureActive ? '✓ ' : ''}Mesure de longueur`, onClick: () => setMeasureActive((v) => !v) },
+        ...(Object.keys(MEASURE_LABELS) as Exclude<MeasureMode, 'none'>[]).map((m) => ({
+          label: `${measureMode === m ? '✓ ' : ''}${MEASURE_LABELS[m]}`,
+          onClick: () => toggleMeasure(m),
+        })),
       ],
     },
   ];
@@ -343,11 +377,11 @@ const IFCViewer: FC = () => {
         <button className="tool-btn" onClick={fitView}>Ajuster</button>
         <button className="tool-btn" onClick={recenter}>Recentrer</button>
         <button className={`tool-btn ${clipActive ? 'active' : ''}`} onClick={() => setClipActive((v) => !v)}>Coupe</button>
-        <button className={`tool-btn ${measureActive ? 'active' : ''}`} onClick={() => setMeasureActive((v) => !v)}>Mesure</button>
+        <button className={`tool-btn ${measureMode === 'length' ? 'active' : ''}`} onClick={() => toggleMeasure('length')}>Mesure</button>
         <button className="tool-btn" onClick={isolateSelection}>Isoler</button>
         <button className="tool-btn" onClick={showAll}>Tout afficher</button>
         <span className="footer-hint">
-          {clipActive || measureActive ? 'Double-clic sur la vue' : 'Duplex Apartment © buildingSMART · CC-BY 4.0'}
+          {clipActive || measureMode !== 'none' ? 'Double-clic sur la vue' : 'Duplex Apartment © buildingSMART · CC-BY 4.0'}
         </span>
       </footer>
     </div>
