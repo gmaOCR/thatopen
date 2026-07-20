@@ -1,139 +1,96 @@
-import { useState, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import * as OBC from '@thatopen/components';
-import * as THREE from 'three';
-import { updateRaycasterTargets } from '../services/raycaster';
-import { safeExecute } from '../services/errorHandling';
+import type { FragmentsModel } from '@thatopen/fragments';
+import type { ViewerWorld } from '../services/renderer';
 
+export interface LoadedModel {
+  id: string;
+  model: FragmentsModel;
+}
 
+const WASM_PATH = '/wasm/';
+
+/**
+ * Chargement de modèles avec le moteur fragments v3.
+ * - `loadIFC`/`loadIFCBuffer` : import IFC → fragments (via IfcLoader).
+ * - `loadFragments` : chargement direct d'un `.frag` pré-converti.
+ * Tout modèle ajouté au moteur est automatiquement monté dans la scène.
+ */
 export const useIFCLoader = (
   components: OBC.Components | null,
-  world: OBC.World | null,
-  setIsLoading: (loading: boolean) => void
+  world: ViewerWorld | null,
+  setIsLoading: (loading: boolean) => void,
 ) => {
-  const [isImporting, setIsImporting] = useState(false);
-  const [loadedModels, setLoadedModels] = useState<THREE.Object3D[]>([]);
+  const [loadedModels, setLoadedModels] = useState<LoadedModel[]>([]);
 
-  // Fonction de nettoyage des ressources d'un modèle
-  const cleanupModel = useCallback((model: THREE.Object3D) => {
-    if (!model) return;
-    
-    console.log(`Nettoyage du modèle ${model.name}...`);
-    
-    // Supprimer les écouteurs d'événements spécifiques au modèle
-    if (model.userData.updateStreamerFunction && world?.camera?.controls) {
-      world.camera.controls.removeEventListener('sleep', model.userData.updateStreamerFunction);
-    }
-    
-    // Supprimer le modèle de la scène
-    if (world) {
-      world.scene.three.remove(model);
-    }
-    
-    // Si le modèle a des enfants avec des matériaux, les disposer
-    model.traverse((child: any) => {
-      if (child.geometry) {
-        child.geometry.dispose();
-      }
-      
-      if (child.material) {
-        if (Array.isArray(child.material)) {
-          child.material.forEach((mat: THREE.Material) => mat.dispose());
-        } else {
-          child.material.dispose();
-        }
-      }
-    });
-    
-    // Mettre à jour les cibles du raycaster après suppression
-    if (components && world) {
-      updateRaycasterTargets(components, world);
-    }
+  useEffect(() => {
+    if (!components || !world) return;
+    const fragments = components.get(OBC.FragmentsManager);
+
+    const onItemSet = ({ key, value }: { key: string; value: FragmentsModel }) => {
+      value.useCamera(world.camera.three);
+      world.scene.three.add(value.object);
+      void fragments.core.update(true);
+      setLoadedModels((prev) =>
+        prev.some((m) => m.id === key) ? prev : [...prev, { id: key, model: value }],
+      );
+    };
+
+    fragments.list.onItemSet.add(onItemSet);
+    return () => {
+      fragments.list.onItemSet.remove(onItemSet);
+    };
   }, [components, world]);
 
-  // Supprimer un modèle spécifique
-  const removeModel = useCallback((model: THREE.Object3D) => {
-    if (!model) return;
-    
-    cleanupModel(model);
-    setLoadedModels(prev => prev.filter(m => m !== model));
-    
-    // Forcer une mise à jour des composants qui dépendent des modèles
-    if (components) {
-      const fragments = components.get(OBC.FragmentsManager);
-      if (fragments && fragments.onFragmentsDisposed) {
-        fragments.onFragmentsDisposed.trigger({ groupID: model.uuid, fragmentIDs: [] });
-      }
-    }
-    
-    console.log(`Modèle ${model.name} supprimé`);
-  }, [components, cleanupModel]);
-
-  // Supprimer tous les modèles
-  const removeAllModels = useCallback(() => {
-    loadedModels.forEach(cleanupModel);
-    setLoadedModels([]);
-    
-    console.log('Tous les modèles ont été supprimés');
-  }, [loadedModels, cleanupModel]);
-
-  const loadIFC = useCallback(async (file: File) => {
-    if (!components || !world) return null;
-
-    setIsLoading(true);
-    setIsImporting(true);
-    
-    return await safeExecute(
-      async () => {
+  const loadIFCBuffer = useCallback(
+    async (buffer: Uint8Array, id: string) => {
+      if (!components) return null;
+      setIsLoading(true);
+      try {
         const ifcLoader = components.get(OBC.IfcLoader);
-        if (!ifcLoader) throw new Error('IFC Loader non trouvé');
-
-        ifcLoader.settings.wasm = {
-          path: "/wasm/",
-          absolute: true
-        };
-
-        const arrayBuffer = await file.arrayBuffer();
-        const buffer = new Uint8Array(arrayBuffer);
-        
-        // Chargement et ajout du modèle à la scène
-        const model = await ifcLoader.load(buffer);
-        model.name = file.name.replace('.ifc', '') || 'example';
-        world.scene.three.add(model);
-        
-        // Mise à jour des cibles du raycaster
-        updateRaycasterTargets(components, world);
-
-        // Écoute de l'événement de chargement des fragments
-        const fragments = components.get(OBC.FragmentsManager);
-        const onFragmentsLoadedHandler = (fragModel: THREE.Object3D) => {
-          if (fragModel.uuid === model.uuid) {
-            console.log('Fragments chargés pour le modèle:', fragModel.name);
-          }
-        };
-        
-        fragments?.onFragmentsLoaded.add(onFragmentsLoadedHandler);
-        
-        // Stocker la référence à l'écouteur pour le nettoyage
-        model.userData.fragmentsLoadedHandler = onFragmentsLoadedHandler;
-        
-        // Ajouter le modèle à la liste des modèles chargés
-        setLoadedModels(prev => [...prev, model]);
-        
-        return model;
-      },
-      'chargement du fichier IFC',
-      () => {
+        await ifcLoader.setup({ autoSetWasm: false, wasm: { path: WASM_PATH, absolute: true } });
+        return await ifcLoader.load(buffer, true, id);
+      } finally {
         setIsLoading(false);
-        setIsImporting(false);
       }
-    );
-  }, [components, world, setIsLoading]);
-  
-  return { 
-    loadIFC, 
-    removeModel, 
-    removeAllModels, 
-    loadedModels, 
-    isImporting 
-  };
+    },
+    [components, setIsLoading],
+  );
+
+  const loadIFC = useCallback(
+    async (file: File) => {
+      const buffer = new Uint8Array(await file.arrayBuffer());
+      const id = file.name.replace(/\.ifc$/i, '') || 'model';
+      return loadIFCBuffer(buffer, id);
+    },
+    [loadIFCBuffer],
+  );
+
+  const loadFragments = useCallback(
+    async (buffer: ArrayBuffer, id: string) => {
+      if (!components) return null;
+      setIsLoading(true);
+      try {
+        const fragments = components.get(OBC.FragmentsManager);
+        return await fragments.core.load(buffer, { modelId: id, camera: world?.camera.three });
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [components, world, setIsLoading],
+  );
+
+  const removeModel = useCallback(
+    async (id: string) => {
+      if (!components || !world) return;
+      const fragments = components.get(OBC.FragmentsManager);
+      const entry = loadedModels.find((m) => m.id === id);
+      if (entry) world.scene.three.remove(entry.model.object);
+      await fragments.core.disposeModel(id);
+      setLoadedModels((prev) => prev.filter((m) => m.id !== id));
+    },
+    [components, world, loadedModels],
+  );
+
+  return { loadIFC, loadIFCBuffer, loadFragments, removeModel, loadedModels };
 };

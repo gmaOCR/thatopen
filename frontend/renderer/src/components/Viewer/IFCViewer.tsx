@@ -1,295 +1,273 @@
-import { FC, useEffect, useRef, useState, ChangeEvent, Fragment, useCallback } from 'react';
-import * as BUI from "@thatopen/ui";
-import * as CUI from "@thatopen/ui-obc";
-import * as OBC from "@thatopen/components";
-import { useRaycaster } from '../../hooks/useRaycaster';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { FC, ChangeEvent } from 'react';
+import * as OBC from '@thatopen/components';
+import * as OBF from '@thatopen/components-front';
+import * as CUI from '@thatopen/ui-obc';
 import { useRenderer } from '../../hooks/useRenderer';
 import { useIFCLoader } from '../../hooks/useIFCLoader';
-import { useClassificationTreeSimple } from '../../hooks/useClassificationTree';
-import { SectionsAccordion, SectionItem } from '../UI/SectionsAccordion';
-import { LoadingDialog } from '../UI/LoadingDialog';
-import { ClipperControl } from '../Controls/ClipperControl';
-import { ModelList } from '../UI/ModelList';
-import { EntityAttributes } from '../Data/EntityAttributes';
-import { FormControlLabel, Checkbox, Tooltip, Paper, Typography } from '@mui/material';
-import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
-import { useStreamingService } from '../../services/streaming';
+
+// ponytail: IFC brut au démarrage ; pré-conversion .frag = optimisation Phase ultérieure.
+const DEFAULT_MODEL_URL = '/models/demo.ifc';
+const DEFAULT_MODEL_ID = 'Duplex Apartment';
+
+type ItemsUpdate = ReturnType<typeof CUI.tables.itemsData>[1];
+type SpatialUpdate = ReturnType<typeof CUI.tables.spatialTree>[1];
+
+interface MenuDef {
+  label: string;
+  items: { label: string; onClick: () => void; disabled?: boolean }[];
+}
 
 const IFCViewer: FC = () => {
-  const containerRef = useRef<HTMLDivElement>(null!);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const leftPanelRef = useRef<HTMLDivElement>(null);
+  const rightPanelRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [isLoading, setIsLoading] = useState(false);
-  const [isGeneratingTiles, setIsGeneratingTiles] = useState(false);
-  const [ifcModel, setIfcModel] = useState<any>(null);
-  const [useStreaming, setUseStreaming] = useState(false);
-  const [classificationUpdateCounter] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [clipActive, setClipActive] = useState(false);
+  const [measureActive, setMeasureActive] = useState(false);
 
-  // Obtention des composants et du monde
   const { components, world, isInitialized } = useRenderer(containerRef);
-  
-  // Services
-  const streamingService = useStreamingService(components, world);
-  
+  const { loadIFC, loadIFCBuffer, loadedModels } = useIFCLoader(components, world, setIsLoading);
+  const defaultLoaded = useRef(false);
+  const itemsUpdate = useRef<ItemsUpdate | null>(null);
+  const spatialUpdate = useRef<SpatialUpdate | null>(null);
+
+  // --- Panneaux CUI + sélection (une fois le monde prêt) ---
   useEffect(() => {
-    // Initialisation des managers BUI et CUI
-    try {
-      BUI.Manager.init();
-      CUI.Manager.init();
-    } catch (e) {
-      console.error("Erreur d'initialisation des managers:", e);
-    }
-  }, []);
+    if (!isInitialized || !components || !world) return;
+    const fragments = components.get(OBC.FragmentsManager);
 
-  // Hooks personnalisés
-  const { loadIFC, removeModel, loadedModels } = useIFCLoader(components, world, setIsLoading);
-  const { ClassificationTreeComponent } = useClassificationTreeSimple({ 
-    components, 
-    updateTrigger: classificationUpdateCounter 
-  });
+    // Sélection au clic
+    const highlighter = components.get(OBF.Highlighter);
+    highlighter.setup({ world });
+    const selectName = highlighter.config.selectName;
 
-  // Raycaster pour l'interaction
-  useRaycaster({ components, world });
+    // Panneaux prêts (ui-obc)
+    const [modelsListEl] = CUI.tables.modelsList(
+      { components, actions: { visibility: true, dispose: true } },
+      true,
+    );
+    const [spatialEl, updateSpatial] = CUI.tables.spatialTree(
+      { components, models: [...fragments.list.values()], selectHighlighterName: selectName },
+      true,
+    );
+    const [itemsEl, updateItems] = CUI.tables.itemsData({ components, modelIdMap: {} });
+    spatialUpdate.current = updateSpatial;
+    itemsUpdate.current = updateItems;
 
-  // Gestion du changement de l'input file
+    leftPanelRef.current?.replaceChildren(spatialEl, modelsListEl);
+    rightPanelRef.current?.replaceChildren(itemsEl);
+
+    // Sélection -> panneau propriétés
+    const events = highlighter.events[selectName];
+    const onHighlight = (map: OBC.ModelIdMap) => updateItems({ components, modelIdMap: map });
+    const onClear = () => updateItems({ components, modelIdMap: {} });
+    events?.onHighlight.add(onHighlight);
+    events?.onClear.add(onClear);
+
+    // Rafraîchir l'arbre spatial quand un modèle est chargé
+    const refreshTree = () =>
+      updateSpatial({
+        components,
+        models: [...fragments.list.values()],
+        selectHighlighterName: selectName,
+      });
+    fragments.list.onItemSet.add(refreshTree);
+
+    return () => {
+      events?.onHighlight.remove(onHighlight);
+      events?.onClear.remove(onClear);
+      fragments.list.onItemSet.remove(refreshTree);
+    };
+  }, [isInitialized, components, world]);
+
+  // --- Maquette de démo au démarrage ---
+  useEffect(() => {
+    if (!isInitialized || !components || defaultLoaded.current) return;
+    defaultLoaded.current = true;
+    void (async () => {
+      try {
+        const res = await fetch(DEFAULT_MODEL_URL);
+        if (!res.ok) return;
+        const buffer = new Uint8Array(await res.arrayBuffer());
+        await loadIFCBuffer(buffer, DEFAULT_MODEL_ID);
+      } catch (e) {
+        console.warn('Maquette de démo indisponible :', e);
+      }
+    })();
+  }, [isInitialized, components, loadIFCBuffer]);
+
+  // --- Outil coupe (Clipper) : double-clic crée, Suppr efface ---
+  useEffect(() => {
+    if (!components || !world) return;
+    const container = containerRef.current;
+    if (!container) return;
+    const clipper = components.get(OBC.Clipper);
+    clipper.setup();
+    clipper.enabled = clipActive;
+
+    if (!clipActive) return;
+    const onDblClick = () => void clipper.create(world);
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Delete' || e.code === 'Backspace') void clipper.delete(world);
+    };
+    container.addEventListener('dblclick', onDblClick);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      container.removeEventListener('dblclick', onDblClick);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [components, world, clipActive]);
+
+  // --- Outil mesure (longueur) : double-clic pose un point ---
+  useEffect(() => {
+    if (!components || !world) return;
+    const container = containerRef.current;
+    if (!container) return;
+    const dimensions = components.get(OBF.LengthMeasurement);
+    dimensions.world = world;
+    dimensions.enabled = measureActive;
+    if (!measureActive) return;
+    const onDblClick = () => void dimensions.create();
+    container.addEventListener('dblclick', onDblClick);
+    return () => container.removeEventListener('dblclick', onDblClick);
+  }, [components, world, measureActive]);
+
   const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file || !components || !world) {
-      console.warn("Composants manquants pour le chargement de fichier");
-      return;
-    }
-    
-    // Vérifier si le fichier est volumineux et suggérer le streaming
-    const isLargeFile = file.size > 15 * 1024 * 1024; // 15MB
-    if (isLargeFile && !useStreaming) {
-      const useStreamingSuggestion = window.confirm('Ce fichier est volumineux. Voulez-vous utiliser le mode streaming pour de meilleures performances?');
-      if (useStreamingSuggestion) {
-        setUseStreaming(true);
-      }
-    }
-    
-    // Réinitialiser les états
+    if (!file) return;
     setError(null);
-    
-    // Marquer le début du chargement
-    console.log('Début du chargement...');
-    setIsLoading(true);
-    
     try {
-      let model;
-      
-      if (useStreaming && streamingService) {
-        // Approche avec Streaming via le service dédié
-        setIsGeneratingTiles(true);
-        model = await streamingService.loadFileWithStreaming(file);
-        setIsGeneratingTiles(false);
-      } else {
-        // Approche standard
-        console.log('Chargement standard...');
-        model = await loadIFC(file);
-      }
-      
-      if (!model) {
-        throw new Error("Le modèle n'a pas pu être chargé correctement.");
-      }
-      
-      setIfcModel(model);
-      console.log('Modèle chargé avec succès');
-      
-    } catch(error) {
-      console.error("Erreur lors de l'import IFC :", error);
-      setError(error instanceof Error ? error.message : "Erreur inconnue lors du chargement");
+      await loadIFC(file);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erreur de chargement');
     } finally {
-      // S'assurer que les états de chargement sont réinitialisés
-      console.log('Fin du chargement, réinitialisation des états');
-      setIsLoading(false);
-      setIsGeneratingTiles(false);
-      
-      // Réinitialiser l'input file pour permettre de charger le même fichier à nouveau
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
-  // Fonction pour gérer la suppression de modèle
-  const handleModelDelete = useCallback(async (modelId: string) => {
-    if (!components || !world) return;
-    
-    try {
-      console.log(`IFCViewer: DEBUG SUPPRESSION - Début de la suppression du modèle ${modelId}`);
-      
-      const modelToDelete = loadedModels.find(m => m.uuid === modelId);
-      if (!modelToDelete) {
-        console.warn(`Modèle avec ID ${modelId} non trouvé`);
-        return;
-      }
-      
-      // Vérifier si c'est le modèle actif
-      const isActiveModel = ifcModel && ifcModel.uuid === modelId;
-      
-      // Nettoyer les ressources spécifiques au streamer
-      if (streamingService && modelToDelete.userData?.updateStreamerFunction) {
-        await streamingService.cleanupModel(modelToDelete);
-      }
-      
-      // Supprimer le modèle - opération synchronisée
-      await removeModel(modelToDelete);
-      
-      // Si c'était le modèle actif, réinitialiser ifcModel
-      if (isActiveModel) {
-        setIfcModel(null);
-      }
-      
-      // Vérification supplémentaire post-suppression
-      const fragmentsManager = components.get(OBC.FragmentsManager);
-      const remainingModels = fragmentsManager ? Object.keys(fragmentsManager.groups || {}).length : 0;
-      console.log(`IFCViewer: DEBUG SUPPRESSION - Après suppression, modèles restants: ${remainingModels}`);
-      
-      // Émission d'événement explicite si plus aucun modèle
-      if (remainingModels === 0) {
-        console.log("IFCViewer: DEBUG SUPPRESSION - Plus aucun modèle, émission de l'événement all-models-removed");
-        document.dispatchEvent(new CustomEvent('all-models-removed'));
-      }
-      
-      return true;
-    } catch(error) {
-      console.error("IFCViewer: DEBUG SUPPRESSION - Erreur lors de la suppression", error);
-      throw error;
-    }
-  }, [components, world, streamingService, removeModel, ifcModel, setIfcModel, classificationUpdateCounter]);
+  const recenter = useCallback(() => {
+    void world?.camera.controls.setLookAt(15, 15, 15, 0, 0, 0, true);
+  }, [world]);
 
-  const sections: SectionItem[] = [];
-  if (components && world && containerRef.current) {
-    sections.push({
-      label: 'Importation',
-      content: (
-        <div>
-          <label 
-            htmlFor="ifc-upload" 
-            style={{
-              display: "inline-block",
-              width: "100%",
-              padding: "8px 12px",
-              backgroundColor: "#007bff",
-              color: "white",
-              borderRadius: "5px",
-              cursor: "pointer",
-              textAlign: "center",
-              marginBottom: "15px"
-            }}
-          >
-            Import fichier IFC
-          </label>
-          <input 
-            id="ifc-upload"
-            type="file" 
-            accept=".ifc" 
-            onChange={handleFileChange}
-            ref={fileInputRef}
-            style={{ display: "none" }} 
-            onClick={(e) => {
-              // S'assurer que l'événement change est déclenché même si le même fichier est sélectionné
-              (e.target as HTMLInputElement).value = '';
-            }}
-          />
-          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
-            <FormControlLabel
-              control={
-                <Checkbox 
-                  checked={useStreaming}
-                  onChange={(e) => setUseStreaming(e.target.checked)}
-                  style={{ color: 'white' }}
-                />
-              }
-              label="Mode streaming"
-              style={{ color: 'white', marginRight: '5px' }}
-            />
-            <Tooltip title="Recommandé pour les gros modèles IFC. Charge progressivement les parties visibles du modèle pour économiser la mémoire." arrow>
-              <HelpOutlineIcon style={{ color: 'white', fontSize: '1rem' }} />
-            </Tooltip>
-          </div>
-          <div style={{ fontSize: '0.8rem', color: '#aaa', marginTop: '5px' }}>
-            {isGeneratingTiles ? 'Génération des tuiles en cours...' : 
-             isLoading ? 'Chargement en cours...' : 
-             error ? `Erreur: ${error}` : 'Prêt'}
-          </div>
-        </div>
-      ),
-    });
-    
-    sections.push({
-      label: 'Classification',
-      content: (
-        <Paper sx={{ p: 2, m: 1, backgroundColor: '#616161', color: 'white' }}>
-          <Typography variant="h6" gutterBottom>
-            Classification
-          </Typography>
-          {loadedModels.length === 0 ? (
-            <Typography variant="body2" sx={{ color: '#aaa', fontStyle: 'italic' }}>
-              Aucun modèle chargé pour afficher la classification.
-            </Typography>
-          ) : (
-            <ClassificationTreeComponent />
-          )}
-        </Paper>
-      ),
-    });
-    
-    sections.push({
-      label: 'Modèles chargés',
-      content: (
-        <ModelList 
-          components={components} 
-          onDeleteModel={handleModelDelete}
-        />
-      ),
-    });
+  const topView = useCallback(() => {
+    void world?.camera.controls.setLookAt(0, 30, 0, 0, 0, 0, true);
+  }, [world]);
 
-    sections.push({
-      label: 'Plan de coupe',
-      content: (
-        <ClipperControl
-          components={components}
-          world={world}
-          container={containerRef.current}
-        />
-      ),
-    });
-    
-    sections.push({
-      label: 'Entités',
-      content: (
-        <EntityAttributes
-          components={components}
-          world={world}
-          model={ifcModel}
-        />
-      ),
-    });
-  }
-  
-  // Vérifier si le chargement est en cours
-  const showLoadingDialog = isLoading || isGeneratingTiles;
-  
+  const menus: MenuDef[] = [
+    {
+      label: 'Fichier',
+      items: [
+        { label: 'Ouvrir un IFC…', onClick: () => fileInputRef.current?.click() },
+        {
+          label: 'Recharger la maquette de démo',
+          onClick: () => {
+            defaultLoaded.current = false;
+            setError(null);
+            void (async () => {
+              const res = await fetch(DEFAULT_MODEL_URL);
+              if (res.ok) await loadIFCBuffer(new Uint8Array(await res.arrayBuffer()), DEFAULT_MODEL_ID);
+            })();
+          },
+        },
+      ],
+    },
+    {
+      label: 'Vue',
+      items: [
+        { label: 'Recentrer (iso)', onClick: recenter },
+        { label: 'Vue de dessus', onClick: topView },
+      ],
+    },
+    {
+      label: 'Outils',
+      items: [
+        { label: `${clipActive ? '✓ ' : ''}Plan de coupe`, onClick: () => setClipActive((v) => !v) },
+        { label: `${measureActive ? '✓ ' : ''}Mesure de longueur`, onClick: () => setMeasureActive((v) => !v) },
+      ],
+    },
+  ];
+
   return (
-    <Fragment>
-      <div ref={containerRef} className="app-container" style={{ position: 'relative' }}>
-        {isInitialized && (
-          <div style={{ 
-            position: 'absolute', 
-            top: 10, 
-            right: 10, 
-            zIndex: 1000, 
-            maxHeight: '95vh', 
-            overflowY: 'auto' 
-          }}>
-            <SectionsAccordion sections={sections} />
-          </div>
-        )}
-      </div>
-      {showLoadingDialog && <LoadingDialog />}
-    </Fragment>
+    <div className="app-container" onClick={() => openMenu && setOpenMenu(null)}>
+      {/* Topbar + menus */}
+      <header className="viewer-topbar">
+        <span className="viewer-brand">TechData · IFC Viewer</span>
+        <nav className="viewer-menus" onClick={(e) => e.stopPropagation()}>
+          {menus.map((menu) => (
+            <div className="menu" key={menu.label}>
+              <button
+                className={`menu-btn ${openMenu === menu.label ? 'open' : ''}`}
+                onClick={() => setOpenMenu((m) => (m === menu.label ? null : menu.label))}
+              >
+                {menu.label}
+              </button>
+              {openMenu === menu.label && (
+                <ul className="menu-dropdown">
+                  {menu.items.map((item) => (
+                    <li key={item.label}>
+                      <button
+                        onClick={() => {
+                          item.onClick();
+                          setOpenMenu(null);
+                        }}
+                        disabled={item.disabled}
+                      >
+                        {item.label}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ))}
+        </nav>
+        <span className="viewer-status">
+          {isLoading ? 'Chargement…' : `${loadedModels.length} modèle(s)`}
+        </span>
+        {error && <span className="viewer-error">{error}</span>}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".ifc"
+          onChange={handleFileChange}
+          style={{ display: 'none' }}
+        />
+      </header>
+
+      {/* Sidebar gauche : arbre spatial + liste des modèles */}
+      <aside className="viewer-left">
+        <div className="panel-title">Structure &amp; modèles</div>
+        <div ref={leftPanelRef} className="panel-body" />
+      </aside>
+
+      {/* Vue 3D */}
+      <div ref={containerRef} className="viewer-canvas" />
+
+      {/* Panneau droit : propriétés de la sélection */}
+      <aside className="viewer-right">
+        <div className="panel-title">Propriétés</div>
+        <div ref={rightPanelRef} className="panel-body" />
+      </aside>
+
+      {/* Toolbar bas */}
+      <footer className="viewer-footer">
+        <button className="tool-btn" onClick={recenter}>Recentrer</button>
+        <button className={`tool-btn ${clipActive ? 'active' : ''}`} onClick={() => setClipActive((v) => !v)}>
+          Coupe
+        </button>
+        <button className={`tool-btn ${measureActive ? 'active' : ''}`} onClick={() => setMeasureActive((v) => !v)}>
+          Mesure
+        </button>
+        <span className="footer-hint">
+          {clipActive || measureActive ? 'Double-clic sur la vue' : 'Duplex Apartment © buildingSMART · CC-BY 4.0'}
+        </span>
+      </footer>
+    </div>
   );
 };
 

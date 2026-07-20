@@ -1,80 +1,72 @@
 import * as OBC from "@thatopen/components";
-import * as OBCF from "@thatopen/components-front";
+import * as OBF from "@thatopen/components-front";
 import * as BUI from "@thatopen/ui";
 import * as CUI from "@thatopen/ui-obc";
 import * as THREE from "three";
+// Worker fragments v3 auto-hébergé (bundlé par Vite → pas de fetch unpkg au runtime).
+import fragmentsWorkerUrl from "@thatopen/fragments/worker?url";
 
-export const initManagers = () => {
+/** Monde typé du viewer : scène + caméra ortho/perspective + renderer 2D/postpro.
+ *  PostproductionRenderer fournit la couche CSS2D indispensable aux annotations
+ *  (mesures, marqueurs) et permet les effets (contours/AO). */
+export type ViewerWorld = OBC.SimpleWorld<
+  OBC.SimpleScene,
+  OBC.OrthoPerspectiveCamera,
+  OBF.PostproductionRenderer
+>;
+
+export interface ViewerHandle {
+  components: OBC.Components;
+  world: ViewerWorld;
+}
+
+let managersReady = false;
+
+/** Initialise les managers d'UI ThatOpen (idempotent). */
+export const initManagers = (): void => {
+  if (managersReady) return;
   BUI.Manager.init();
   CUI.Manager.init();
+  managersReady = true;
 };
 
-export const initRenderer = (container: HTMLElement) => {
+/** Crée le monde 3D, initialise le moteur fragments v3 et sa grille. */
+export const initRenderer = async (container: HTMLElement): Promise<ViewerHandle> => {
   const components = new OBC.Components();
+
   const worlds = components.get(OBC.Worlds);
   const world = worlds.create<
     OBC.SimpleScene,
-    OBC.SimpleCamera,
-    OBC.SimpleRenderer
+    OBC.OrthoPerspectiveCamera,
+    OBF.PostproductionRenderer
   >();
 
-  // Configuration de la scène
   world.scene = new OBC.SimpleScene(components);
-  world.renderer = new OBC.SimpleRenderer(components, container);
-  world.camera = new OBC.SimpleCamera(components);
+  world.renderer = new OBF.PostproductionRenderer(components, container);
+  world.camera = new OBC.OrthoPerspectiveCamera(components);
 
-  // Initialisation des composants
   components.init();
 
-  // Configuration supplémentaire
-  world.scene.three.background = new THREE.Color(0x1a1a1a);
   world.scene.setup();
-  
-  // Positionner la caméra
-  world.camera.controls.setLookAt(5, 5, 5, 0, 0, 0);
+  world.scene.three.background = new THREE.Color(0x0b1220); // navy TechData
+  await world.camera.controls.setLookAt(15, 15, 15, 0, 0, 0);
 
-  // Ajout de la grille
-  const viewerGrids = components.get(OBC.Grids);
-  viewerGrids.create(world);
+  components.get(OBC.Grids).create(world);
 
-  // Initialiser le streamer pour les gros fichiers IFC
-  const streamer = components.get(OBCF.IfcStreamer);
-  streamer.world = world;
-  
-  // S'assurer que le tiler est disponible
-  const tiler = components.get(OBC.IfcGeometryTiler);
-  if (tiler) {
-    // Autres configurations spécifiques au tiler
-    tiler.settings.minGeometrySize = 20;
-    tiler.settings.minAssetsSize = 1000;
-    console.log("IfcGeometryTiler configuré avec succès");
-  }
+  // Moteur fragments v3 : charge et affiche les modèles via un worker dédié.
+  const fragments = components.get(OBC.FragmentsManager);
+  fragments.init(fragmentsWorkerUrl);
 
-  // Style du conteneur
+  // Recalcul du LOD/culling quand la caméra s'immobilise.
+  world.camera.controls.addEventListener("rest", () => {
+    void fragments.core.update(true);
+  });
+
   container.style.position = "relative";
-
   return { components, world };
 };
 
-export const disposeRenderer = (world: OBC.World) => {
-  // Nettoyer les URL objets
-  const revokeAllObjectURLs = () => {
-    const objectURLs = performance.getEntriesByType('resource')
-      .filter(resource => resource.name.startsWith('blob:'))
-      .map(resource => resource.name);
-    
-    objectURLs.forEach(url => {
-      try {
-        URL.revokeObjectURL(url);
-      } catch (e) {
-        console.warn('Erreur lors de la révocation de URL:', url, " error:", e);
-      }
-    });
-  };
-
-  revokeAllObjectURLs();
-  
-  // Disposer les ressources ThreeJS
-  world.renderer?.dispose();
-  world.scene?.dispose();
+/** Libère toutes les ressources du viewer. */
+export const disposeRenderer = (components: OBC.Components): void => {
+  components.dispose();
 };

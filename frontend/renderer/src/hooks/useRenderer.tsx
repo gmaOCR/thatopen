@@ -1,36 +1,46 @@
 import { useEffect, useState } from 'react';
-import * as OBC from "@thatopen/components";
+import type { RefObject } from 'react';
+import * as OBC from '@thatopen/components';
 import { initRenderer, disposeRenderer, initManagers } from '../services/renderer';
+import type { ViewerWorld } from '../services/renderer';
 
 interface RendererState {
   components: OBC.Components | null;
-  world: OBC.World | null;
+  world: ViewerWorld | null;
   isInitialized: boolean;
 }
 
-export const useRenderer = (containerRef: React.RefObject<HTMLElement>) => {
+/** Monte le monde 3D dans le conteneur référencé et expose components/world. */
+export const useRenderer = (containerRef: RefObject<HTMLElement | null>): RendererState => {
   const [state, setState] = useState<RendererState>({
     components: null,
     world: null,
-    isInitialized: false
+    isInitialized: false,
   });
 
   useEffect(() => {
-    if (!containerRef.current) return;
+    const el = containerRef.current;
+    if (!el) return;
 
-    initManagers()
+    initManagers();
 
-    const { components, world } = initRenderer(containerRef.current);
-    setState({
-      components,
-      world,
-      isInitialized: true
-    });
+    let created: OBC.Components | null = null;
+    let cancelled = false;
+
+    initRenderer(el)
+      .then(({ components, world }) => {
+        created = components;
+        if (cancelled) {
+          disposeRenderer(components);
+          return;
+        }
+        setState({ components, world, isInitialized: true });
+      })
+      .catch((e) => console.error("Échec de l'initialisation du renderer :", e));
 
     return () => {
-      if (world) {
-        disposeRenderer(world);
-      }
+      cancelled = true;
+      if (created) disposeRenderer(created);
     };
   }, [containerRef]);
 
