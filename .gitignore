@@ -16,6 +16,9 @@ dist
 dist-ssr
 *.local
 
+# Claude Code : ignorer les worktrees locaux, garder agents/skills/settings
+.claude/worktrees/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run build)",
+      "Bash(npm run dev)",
+      "Bash(npm run lint)",
+      "Bash(npm test)",
+      "Bash(npm run typecheck)",
+      "Bash(npm install)",
+      "Bash(npx tsc:*)",
+      "Bash(git status)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(kubectl get:*)",
+      "Bash(docker build:*)"
+    ]
+  }
+}
