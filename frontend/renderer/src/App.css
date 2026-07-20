@@ -1,58 +1,189 @@
 .app,
 .app-container {
-  position: relative;
   width: 100vw;
   height: 100vh;
   overflow: hidden;
 }
 
-.viewer-canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+.app-container {
+  display: grid;
+  grid-template-columns: 300px 1fr 340px;
+  grid-template-rows: 52px 1fr 46px;
+  grid-template-areas:
+    "topbar topbar topbar"
+    "left viewport right"
+    "footer footer footer";
+  background: var(--td-navy-950);
 }
 
+/* Topbar + menus */
 .viewer-topbar {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  right: 12px;
-  z-index: 10;
+  grid-area: topbar;
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 8px 14px;
-  border-radius: 10px;
-  background: rgba(11, 18, 32, 0.72);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(55, 212, 238, 0.25);
-  color: var(--td-ink);
-  font-size: 14px;
+  gap: 18px;
+  padding: 0 16px;
+  background: var(--td-navy-900);
+  border-bottom: 1px solid rgba(55, 212, 238, 0.18);
+  z-index: 20;
 }
 
 .viewer-brand {
-  font-weight: 600;
+  font-weight: 700;
+  font-size: 15px;
   background: linear-gradient(90deg, var(--td-blue), var(--td-cyan));
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  white-space: nowrap;
 }
 
-.viewer-btn {
+.viewer-menus {
+  display: flex;
+  gap: 4px;
+}
+
+.menu {
+  position: relative;
+}
+
+.menu-btn {
+  background: transparent;
+  border: 0;
+  color: var(--td-ink);
+  padding: 6px 10px;
+  border-radius: 6px;
   cursor: pointer;
-  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.menu-btn:hover,
+.menu-btn.open {
+  background: rgba(55, 212, 238, 0.12);
+}
+
+.menu-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin: 4px 0 0;
+  padding: 4px;
+  list-style: none;
+  min-width: 230px;
+  background: #0f1d38;
+  border: 1px solid rgba(55, 212, 238, 0.22);
   border-radius: 8px;
-  background: linear-gradient(90deg, var(--td-blue), var(--td-cyan));
-  color: #04121f;
-  font-weight: 600;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  z-index: 30;
+}
+
+.menu-dropdown li button {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  color: var(--td-ink);
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.menu-dropdown li button:hover {
+  background: rgba(55, 212, 238, 0.14);
+}
+
+.menu-dropdown li button:disabled {
+  color: var(--td-ink-muted);
+  cursor: default;
 }
 
 .viewer-status {
-  color: var(--td-ink-muted);
   margin-left: auto;
+  color: var(--td-ink-muted);
+  font-size: 13px;
 }
 
 .viewer-error {
   color: #ff6b6b;
+  font-size: 13px;
+}
+
+/* Sidebars */
+.viewer-left,
+.viewer-right {
+  background: var(--td-navy-900);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.viewer-left {
+  grid-area: left;
+  border-right: 1px solid rgba(55, 212, 238, 0.12);
+}
+
+.viewer-right {
+  grid-area: right;
+  border-left: 1px solid rgba(55, 212, 238, 0.12);
+}
+
+.panel-title {
+  padding: 10px 14px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--td-ink-muted);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* Vue 3D */
+.viewer-canvas {
+  grid-area: viewport;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Toolbar bas */
+.viewer-footer {
+  grid-area: footer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  background: var(--td-navy-900);
+  border-top: 1px solid rgba(55, 212, 238, 0.18);
+}
+
+.tool-btn {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(55, 212, 238, 0.22);
+  color: var(--td-ink);
+  padding: 5px 12px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.tool-btn:hover {
+  background: rgba(55, 212, 238, 0.12);
+}
+
+.tool-btn.active {
+  background: linear-gradient(90deg, var(--td-blue), var(--td-cyan));
+  color: #04121f;
+  font-weight: 600;
+  border-color: transparent;
+}
+
+.footer-hint {
+  margin-left: auto;
+  color: var(--td-ink-muted);
+  font-size: 12px;
 }

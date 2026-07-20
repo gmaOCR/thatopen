@@ -7,6 +7,13 @@
   --td-ink: #eaf1fb;
   --td-ink-muted: #9db0cc;
 
+  /* Thème ThatOpen UI (panneaux CUI) accordé au branding TechData sombre */
+  --bim-ui_bg-base: #0b1220;
+  --bim-ui_bg-contrast-10: #101a2e;
+  --bim-ui_bg-contrast-20: #16233c;
+  --bim-ui_accent-base: #37d4ee;
+  --bim-ui_main-base: #2f86dd;
+
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   color-scheme: dark;
