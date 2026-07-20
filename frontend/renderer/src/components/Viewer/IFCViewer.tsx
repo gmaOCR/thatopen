@@ -19,6 +19,8 @@ interface MenuDef {
   items: { label: string; onClick: () => void; disabled?: boolean }[];
 }
 
+const hasSelection = (map: OBC.ModelIdMap) => Object.keys(map).length > 0;
+
 const IFCViewer: FC = () => {
   const appRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -31,29 +33,29 @@ const IFCViewer: FC = () => {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [clipActive, setClipActive] = useState(false);
   const [measureActive, setMeasureActive] = useState(false);
+  const [advancedRender, setAdvancedRender] = useState(false);
 
   const { components, world, isInitialized } = useRenderer(containerRef);
   const { loadIFC, loadIFCBuffer, loadedModels } = useIFCLoader(components, world, setIsLoading);
   const defaultLoaded = useRef(false);
+  const fittedOnce = useRef(false);
+  const selectionRef = useRef<OBC.ModelIdMap>({});
   const itemsUpdate = useRef<ItemsUpdate | null>(null);
   const spatialUpdate = useRef<SpatialUpdate | null>(null);
 
-  // --- Panneaux CUI + sélection + survol (une fois le monde prêt) ---
+  // --- Panneaux CUI + sélection + survol ---
   useEffect(() => {
     if (!isInitialized || !components || !world) return;
     const fragments = components.get(OBC.FragmentsManager);
 
-    // Sélection au clic
     const highlighter = components.get(OBF.Highlighter);
     highlighter.setup({ world });
     const selectName = highlighter.config.selectName;
 
-    // Survol : surligne l'élément sous le curseur
     const hoverer = components.get(OBF.Hoverer);
     hoverer.world = world;
     hoverer.enabled = true;
 
-    // Panneaux prêts (ui-obc)
     const [modelsListEl] = CUI.tables.modelsList(
       { components, actions: { visibility: true, dispose: true } },
       true,
@@ -69,14 +71,18 @@ const IFCViewer: FC = () => {
     leftPanelRef.current?.replaceChildren(spatialEl, modelsListEl);
     rightPanelRef.current?.replaceChildren(itemsEl);
 
-    // Sélection -> panneau propriétés
     const events = highlighter.events[selectName];
-    const onHighlight = (map: OBC.ModelIdMap) => updateItems({ components, modelIdMap: map });
-    const onClear = () => updateItems({ components, modelIdMap: {} });
+    const onHighlight = (map: OBC.ModelIdMap) => {
+      selectionRef.current = map;
+      updateItems({ components, modelIdMap: map });
+    };
+    const onClear = () => {
+      selectionRef.current = {};
+      updateItems({ components, modelIdMap: {} });
+    };
     events?.onHighlight.add(onHighlight);
     events?.onClear.add(onClear);
 
-    // Rafraîchir l'arbre spatial quand un modèle est chargé
     const refreshTree = () =>
       updateSpatial({
         components,
@@ -109,7 +115,27 @@ const IFCViewer: FC = () => {
     })();
   }, [isInitialized, components, loadIFCBuffer]);
 
-  // --- Outil coupe (Clipper) : double-clic crée, Suppr efface ---
+  const fitView = useCallback(() => {
+    if (!world || loadedModels.length === 0) return;
+    const box = new THREE.Box3();
+    for (const { model } of loadedModels) box.expandByObject(model.object);
+    if (!box.isEmpty()) void world.camera.controls.fitToBox(box, true);
+  }, [world, loadedModels]);
+
+  // --- Correctif rendu : force le chargement de TOUTES les tuiles après chargement,
+  //     et cadre la vue sur le 1er modèle (évite un rendu partiel dû au culling). ---
+  useEffect(() => {
+    if (!components || !world || loadedModels.length === 0) return;
+    const fragments = components.get(OBC.FragmentsManager);
+    void fragments.core.update(true);
+    if (!fittedOnce.current) {
+      fittedOnce.current = true;
+      const t = setTimeout(() => fitView(), 400);
+      return () => clearTimeout(t);
+    }
+  }, [loadedModels, components, world, fitView]);
+
+  // --- Outil coupe (Clipper) ---
   useEffect(() => {
     if (!components || !world) return;
     const container = containerRef.current;
@@ -130,7 +156,7 @@ const IFCViewer: FC = () => {
     };
   }, [components, world, clipActive]);
 
-  // --- Outil mesure (longueur) : double-clic pose un point ---
+  // --- Outil mesure (longueur) ---
   useEffect(() => {
     if (!components || !world) return;
     const container = containerRef.current;
@@ -166,13 +192,6 @@ const IFCViewer: FC = () => {
     void world?.camera.controls.setLookAt(0, 30, 0, 0, 0, 0, true);
   }, [world]);
 
-  const fitView = useCallback(() => {
-    if (!world || loadedModels.length === 0) return;
-    const box = new THREE.Box3();
-    for (const { model } of loadedModels) box.expandByObject(model.object);
-    if (!box.isEmpty()) void world.camera.controls.fitToBox(box, true);
-  }, [world, loadedModels]);
-
   const toggleProjection = useCallback(() => {
     if (!world) return;
     const next = world.camera.projection.current === 'Perspective' ? 'Orthographic' : 'Perspective';
@@ -183,6 +202,34 @@ const IFCViewer: FC = () => {
     if (!document.fullscreenElement) void appRef.current?.requestFullscreen();
     else void document.exitFullscreen();
   }, []);
+
+  const toggleAdvancedRender = useCallback(() => {
+    const renderer = world?.renderer;
+    if (!renderer) return;
+    try {
+      const on = !advancedRender;
+      renderer.postproduction.enabled = on;
+      setAdvancedRender(on);
+    } catch (e) {
+      console.warn('Rendu avancé indisponible :', e);
+    }
+  }, [world, advancedRender]);
+
+  // --- Visibilité (Hider) ---
+  const hideSelection = useCallback(() => {
+    if (!components || !hasSelection(selectionRef.current)) return;
+    void components.get(OBC.Hider).set(false, selectionRef.current);
+  }, [components]);
+
+  const isolateSelection = useCallback(() => {
+    if (!components || !hasSelection(selectionRef.current)) return;
+    void components.get(OBC.Hider).isolate(selectionRef.current);
+  }, [components]);
+
+  const showAll = useCallback(() => {
+    if (!components) return;
+    void components.get(OBC.Hider).set(true);
+  }, [components]);
 
   const reloadDemo = useCallback(() => {
     defaultLoaded.current = false;
@@ -208,7 +255,16 @@ const IFCViewer: FC = () => {
         { label: 'Recentrer (iso)', onClick: recenter },
         { label: 'Vue de dessus', onClick: topView },
         { label: 'Projection ortho / perspective', onClick: toggleProjection },
+        { label: `${advancedRender ? '✓ ' : ''}Rendu avancé (contours/AO)`, onClick: toggleAdvancedRender },
         { label: 'Plein écran', onClick: toggleFullscreen },
+      ],
+    },
+    {
+      label: 'Visibilité',
+      items: [
+        { label: 'Isoler la sélection', onClick: isolateSelection },
+        { label: 'Masquer la sélection', onClick: hideSelection },
+        { label: 'Tout afficher', onClick: showAll },
       ],
     },
     {
@@ -222,7 +278,6 @@ const IFCViewer: FC = () => {
 
   return (
     <div className="app-container" ref={appRef} onClick={() => openMenu && setOpenMenu(null)}>
-      {/* Topbar + menus */}
       <header className="viewer-topbar">
         <span className="viewer-brand">TechData · IFC Viewer</span>
         <nav className="viewer-menus" onClick={(e) => e.stopPropagation()}>
@@ -255,30 +310,27 @@ const IFCViewer: FC = () => {
         <input ref={fileInputRef} type="file" accept=".ifc" onChange={handleFileChange} style={{ display: 'none' }} />
       </header>
 
-      {/* Barre de chargement (indéterminée) */}
       {isLoading && <div className="viewer-loading" />}
 
-      {/* Sidebar gauche : arbre spatial + liste des modèles */}
       <aside className="viewer-left">
         <div className="panel-title">Structure &amp; modèles</div>
         <div ref={leftPanelRef} className="panel-body" />
       </aside>
 
-      {/* Vue 3D */}
       <div ref={containerRef} className="viewer-canvas" />
 
-      {/* Panneau droit : propriétés de la sélection */}
       <aside className="viewer-right">
         <div className="panel-title">Propriétés</div>
         <div ref={rightPanelRef} className="panel-body" />
       </aside>
 
-      {/* Toolbar bas */}
       <footer className="viewer-footer">
         <button className="tool-btn" onClick={fitView}>Ajuster</button>
         <button className="tool-btn" onClick={recenter}>Recentrer</button>
         <button className={`tool-btn ${clipActive ? 'active' : ''}`} onClick={() => setClipActive((v) => !v)}>Coupe</button>
         <button className={`tool-btn ${measureActive ? 'active' : ''}`} onClick={() => setMeasureActive((v) => !v)}>Mesure</button>
+        <button className="tool-btn" onClick={isolateSelection}>Isoler</button>
+        <button className="tool-btn" onClick={showAll}>Tout afficher</button>
         <span className="footer-hint">
           {clipActive || measureActive ? 'Double-clic sur la vue' : 'Duplex Apartment © buildingSMART · CC-BY 4.0'}
         </span>
