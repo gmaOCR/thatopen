@@ -7,12 +7,14 @@
   --td-ink: #eaf1fb;
   --td-ink-muted: #9db0cc;
 
-  /* Thème ThatOpen UI (panneaux CUI) accordé au branding TechData sombre */
-  --bim-ui_bg-base: #0b1220;
-  --bim-ui_bg-contrast-10: #101a2e;
-  --bim-ui_bg-contrast-20: #16233c;
-  --bim-ui_accent-base: #37d4ee;
-  --bim-ui_main-base: #2f86dd;
+  /* Thème ThatOpen UI (panneaux CUI) forcé au branding TechData sombre.
+     !important car BUI injecte ses propres variables (violet #6528d7) APRÈS
+     ce fichier au runtime — sans ça notre override serait écrasé. */
+  --bim-ui_bg-base: #0b1220 !important;
+  --bim-ui_bg-contrast-10: #101a2e !important;
+  --bim-ui_bg-contrast-20: #16233c !important;
+  --bim-ui_accent-base: #37d4ee !important;
+  --bim-ui_main-base: #2f86dd !important;
 
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
@@ -38,4 +40,10 @@ body {
   background: var(--td-navy-950);
   color: var(--td-ink);
   overflow: hidden;
+}
+
+/* De-branding : masque le logo « That Open Company » superposé à la scène
+   (c'est notre produit / notre infra). */
+thatopen-logo {
+  display: none !important;
 }

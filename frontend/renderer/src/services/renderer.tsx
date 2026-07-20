@@ -1,15 +1,18 @@
 import * as OBC from "@thatopen/components";
+import * as OBF from "@thatopen/components-front";
 import * as BUI from "@thatopen/ui";
 import * as CUI from "@thatopen/ui-obc";
 import * as THREE from "three";
 // Worker fragments v3 auto-hébergé (bundlé par Vite → pas de fetch unpkg au runtime).
 import fragmentsWorkerUrl from "@thatopen/fragments/worker?url";
 
-/** Monde typé du viewer : scène + caméra ortho/perspective + renderer. */
+/** Monde typé du viewer : scène + caméra ortho/perspective + renderer 2D/postpro.
+ *  PostproductionRenderer fournit la couche CSS2D indispensable aux annotations
+ *  (mesures, marqueurs) et permet les effets (contours/AO). */
 export type ViewerWorld = OBC.SimpleWorld<
   OBC.SimpleScene,
   OBC.OrthoPerspectiveCamera,
-  OBC.SimpleRenderer
+  OBF.PostproductionRenderer
 >;
 
 export interface ViewerHandle {
@@ -35,11 +38,11 @@ export const initRenderer = async (container: HTMLElement): Promise<ViewerHandle
   const world = worlds.create<
     OBC.SimpleScene,
     OBC.OrthoPerspectiveCamera,
-    OBC.SimpleRenderer
+    OBF.PostproductionRenderer
   >();
 
   world.scene = new OBC.SimpleScene(components);
-  world.renderer = new OBC.SimpleRenderer(components, container);
+  world.renderer = new OBF.PostproductionRenderer(components, container);
   world.camera = new OBC.OrthoPerspectiveCamera(components);
 
   components.init();
