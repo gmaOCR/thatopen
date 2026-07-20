@@ -53,13 +53,10 @@ export const initRenderer = async (container: HTMLElement): Promise<ViewerHandle
 
   components.get(OBC.Grids).create(world);
 
-  // Postproduction (contours + ambient occlusion) — rendu plus lisible.
-  // Best-effort : si l'instance n'est pas prête, on reste en rendu simple.
-  try {
-    world.renderer.postproduction.enabled = true;
-  } catch (e) {
-    console.warn("Postproduction indisponible :", e);
-  }
+  // ponytail: postproduction laissée OFF par défaut (le pipeline AO/contours peut
+  // masquer une partie des meshes instanciés des fragments). Activable via l'UI
+  // (menu Vue → « Rendu avancé »). PostproductionRenderer reste utilisé pour sa
+  // couche CSS2D (annotations/mesures).
 
   // Moteur fragments v3 : charge et affiche les modèles via un worker dédié.
   const fragments = components.get(OBC.FragmentsManager);
