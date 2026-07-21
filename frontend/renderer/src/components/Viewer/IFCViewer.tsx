@@ -59,6 +59,7 @@ const IFCViewer: FC = () => {
   const [clipActive, setClipActive] = useState(false);
   const [measureMode, setMeasureMode] = useState<MeasureMode>('none');
   const [advancedRender, setAdvancedRender] = useState(false);
+  const [floorViews, setFloorViews] = useState<string[]>([]);
 
   const { components, world, isInitialized } = useRenderer(containerRef);
   const { loadIFC, loadIFCBuffer, loadedModels } = useIFCLoader(
@@ -171,7 +172,7 @@ const IFCViewer: FC = () => {
     if (!components || !world || loadedModels.length === 0) return;
     const fragments = components.get(OBC.FragmentsManager);
     let cancelled = false;
-    void fragments.core.update(true).then(() => {
+    void fragments.core.update(true).then(async () => {
       if (cancelled || fittedOnce.current) return;
       fittedOnce.current = true;
       const first = loadedModels[0]?.model;
@@ -186,6 +187,15 @@ const IFCViewer: FC = () => {
         }
       }
       fitView();
+      // Génère un plan 2D par IfcBuildingStorey (navigation par étage).
+      try {
+        const views = components.get(OBC.Views);
+        views.world = world;
+        const created = await views.createFromIfcStoreys();
+        if (!cancelled) setFloorViews(created.map((v) => v.id));
+      } catch (e) {
+        console.warn("Plans d'étage indisponibles :", e);
+      }
     });
     return () => {
       cancelled = true;
@@ -439,6 +449,19 @@ const IFCViewer: FC = () => {
         { label: `${advancedRender ? '✓ ' : ''}Rendu avancé (contours/AO)`, onClick: toggleAdvancedRender },
         { label: 'Plein écran', onClick: toggleFullscreen },
       ],
+    },
+    {
+      label: 'Étages',
+      items:
+        floorViews.length > 0
+          ? [
+              ...floorViews.map((id) => ({
+                label: id,
+                onClick: () => components?.get(OBC.Views).open(id),
+              })),
+              { label: '↩ Retour vue 3D', onClick: () => components?.get(OBC.Views).close() },
+            ]
+          : [{ label: 'Aucun étage détecté', onClick: () => {}, disabled: true }],
     },
     {
       label: 'Visibilité',
