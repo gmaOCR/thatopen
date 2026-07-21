@@ -50,6 +50,7 @@ const IFCViewer: FC = () => {
   const leftPanelRef = useRef<HTMLDivElement>(null);
   const rightPanelRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const bcfInputRef = useRef<HTMLInputElement>(null);
 
   const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -104,7 +105,12 @@ const IFCViewer: FC = () => {
     spatialUpdate.current = updateSpatial;
     itemsUpdate.current = updateItems;
 
-    leftPanelRef.current?.replaceChildren(spatialEl, modelsListEl);
+    // BCF (collaboration) : topics + points de vue capturés depuis la caméra.
+    components.get(OBC.BCFTopics).setup();
+    components.get(OBC.Viewpoints).world = world;
+    const [topicsEl] = CUI.tables.topicsList({ components }, true);
+
+    leftPanelRef.current?.replaceChildren(spatialEl, modelsListEl, topicsEl);
     rightPanelRef.current?.replaceChildren(itemsEl);
 
     const events = highlighter.events[selectName];
@@ -330,6 +336,49 @@ const IFCViewer: FC = () => {
     }
   }, [components, pushToast]);
 
+  // --- BCF (topics / points de vue / commentaires) ---
+  const newTopic = useCallback(() => {
+    if (!components || !world) return;
+    const title = window.prompt('Titre du topic BCF :');
+    if (!title) return;
+    const viewpoints = components.get(OBC.Viewpoints);
+    viewpoints.world = world;
+    const vp = viewpoints.create(); // capture la vue (caméra) courante
+    const topic = components.get(OBC.BCFTopics).create({ title });
+    topic.viewpoints.add(vp.guid);
+    const comment = window.prompt('Commentaire (optionnel) :');
+    if (comment) topic.createComment(comment, vp.guid);
+    pushToast('Topic BCF créé', 'info');
+  }, [components, world, pushToast]);
+
+  const exportBCF = useCallback(async () => {
+    if (!components) return;
+    const bcf = components.get(OBC.BCFTopics);
+    if ([...bcf.list.values()].length === 0) {
+      pushToast('Aucun topic BCF à exporter', 'error');
+      return;
+    }
+    const blob = await bcf.export();
+    const url = URL.createObjectURL(blob);
+    download(url, 'topics.bcf');
+    URL.revokeObjectURL(url);
+    pushToast('BCF exporté', 'info');
+  }, [components, pushToast]);
+
+  const importBCF = useCallback(
+    async (file: File) => {
+      if (!components) return;
+      try {
+        const buffer = new Uint8Array(await file.arrayBuffer());
+        await components.get(OBC.BCFTopics).load(buffer);
+        pushToast('BCF importé', 'info');
+      } catch (e) {
+        pushToast(e instanceof Error ? e.message : 'Import BCF impossible', 'error');
+      }
+    },
+    [components, pushToast],
+  );
+
   const reloadDemo = useCallback(() => {
     defaultLoaded.current = false;
     void (async () => {
@@ -408,6 +457,14 @@ const IFCViewer: FC = () => {
       ],
     },
     {
+      label: 'BCF',
+      items: [
+        { label: 'Nouveau topic (vue courante)', onClick: newTopic },
+        { label: 'Importer .bcf…', onClick: () => bcfInputRef.current?.click() },
+        { label: 'Exporter .bcf', onClick: () => void exportBCF() },
+      ],
+    },
+    {
       label: 'Outils',
       items: [
         { label: `${clipActive ? '✓ ' : ''}Plan de coupe`, onClick: () => setClipActive((v) => !v) },
@@ -461,6 +518,17 @@ const IFCViewer: FC = () => {
             : `${loadedModels.length} modèle(s)`}
         </span>
         <input ref={fileInputRef} type="file" accept=".ifc" onChange={handleFileChange} style={{ display: 'none' }} />
+        <input
+          ref={bcfInputRef}
+          type="file"
+          accept=".bcf"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void importBCF(f);
+            if (bcfInputRef.current) bcfInputRef.current.value = '';
+          }}
+          style={{ display: 'none' }}
+        />
       </header>
 
       {isLoading && (
