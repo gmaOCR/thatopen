@@ -51,5 +51,5 @@ frontend/renderer/
 
 ## Licence
 
-Code sous [MIT](LICENSE). Maquette de démo « Duplex Apartment » © buildingSMART, **CC-BY 4.0**
+Code sous [MIT](LICENSE). Maquette de démo « Medical-Dental Clinic » © buildingSMART, **CC-BY 4.0**
 (cf. `frontend/renderer/public/models/ATTRIBUTION.txt`).
