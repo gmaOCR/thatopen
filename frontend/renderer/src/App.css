@@ -343,3 +343,113 @@
   outline-offset: 2px;
   border-radius: 4px;
 }
+
+/* Bouton d'aide (topbar) + panneau de navigation 3D */
+.help-btn {
+  margin-left: auto;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: 50%;
+  border: 1px solid rgba(55, 212, 238, 0.4);
+  background: transparent;
+  color: var(--td-cyan);
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.help-btn:hover {
+  background: rgba(55, 212, 238, 0.14);
+}
+
+/* Backdrop sous la topbar (52px) pour garder le bouton ? cliquable. */
+.help-backdrop {
+  position: absolute;
+  inset: 52px 0 0 0;
+  z-index: 45;
+  background: rgba(0, 0, 0, 0.35);
+  border: 0;
+  padding: 0;
+}
+
+.viewer-help {
+  position: absolute;
+  top: 60px;
+  right: 16px;
+  z-index: 46;
+  width: min(340px, calc(100vw - 32px));
+  background: #0f1d38;
+  border: 1px solid rgba(55, 212, 238, 0.4);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  color: var(--td-ink);
+  overflow: hidden;
+}
+.help-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 14px;
+  font-weight: 600;
+  font-size: 13px;
+  background: linear-gradient(90deg, rgba(47, 134, 221, 0.25), rgba(55, 212, 238, 0.18));
+  border-bottom: 1px solid rgba(55, 212, 238, 0.2);
+}
+.help-close {
+  background: transparent;
+  border: 0;
+  color: var(--td-ink-muted);
+  cursor: pointer;
+  font-size: 13px;
+}
+.help-close:hover {
+  color: var(--td-ink);
+}
+.help-list {
+  margin: 0;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.help-list > div {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 10px;
+  align-items: baseline;
+}
+.help-list dt {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--td-cyan);
+}
+.help-list dd {
+  margin: 0;
+  font-size: 12px;
+  color: var(--td-ink-muted);
+  line-height: 1.4;
+}
+.help-keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 10px 14px 14px;
+  border-top: 1px solid rgba(55, 212, 238, 0.15);
+  font-size: 11px;
+  color: var(--td-ink-muted);
+}
+.help-keys span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.help-keys kbd {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(55, 212, 238, 0.3);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--td-ink);
+}
