@@ -17,7 +17,7 @@ type SpatialUpdate = ReturnType<typeof CUI.tables.spatialTree>[1];
 
 interface MenuDef {
   label: string;
-  items: { label: string; onClick: () => void; disabled?: boolean }[];
+  items: { label: string; onClick: () => void; disabled?: boolean; title?: string }[];
 }
 
 type MeasureMode = 'none' | 'length' | 'area' | 'angle' | 'volume';
@@ -63,6 +63,7 @@ const IFCViewer: FC = () => {
   const [floorViews, setFloorViews] = useState<string[]>([]);
   const [leftOpen, setLeftOpen] = useState(false);
   const [rightOpen, setRightOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const { components, world, isInitialized } = useRenderer(containerRef);
   const { loadIFC, loadIFCBuffer, loadFragments, loadedModels } = useIFCLoader(
@@ -187,8 +188,10 @@ const IFCViewer: FC = () => {
       fittedOnce.current = true;
       const first = loadedModels[0]?.model;
       if (first) {
-        const box = new THREE.Box3().setFromObject(first.object);
-        if (!box.isEmpty()) {
+        // Box du moteur fragments (fiable) — setFromObject sous-évalue min.y sur des
+        // meshes instanciés streamés, d'où la base qui passait un peu sous la grille.
+        const box = first.box;
+        if (box && !box.isEmpty()) {
           const c = box.getCenter(new THREE.Vector3());
           first.object.position.x -= c.x; // centré sur l'origine
           first.object.position.z -= c.z;
@@ -450,7 +453,7 @@ const IFCViewer: FC = () => {
         case 'c': setClipActive((v) => !v); break;
         case 'm': toggleMeasure('length'); break;
         case 'i': isolateSelection(); break;
-        case 'escape': setOpenMenu(null); setClipActive(false); setMeasureMode('none'); break;
+        case 'escape': setOpenMenu(null); setClipActive(false); setMeasureMode('none'); setHelpOpen(false); break;
         default: return;
       }
     };
@@ -472,19 +475,35 @@ const IFCViewer: FC = () => {
     {
       label: 'Fichier',
       items: [
-        { label: 'Ouvrir un IFC…', onClick: () => fileInputRef.current?.click() },
-        { label: 'Recharger la maquette de démo', onClick: reloadDemo },
+        {
+          label: 'Ouvrir un IFC…',
+          onClick: () => fileInputRef.current?.click(),
+          title: 'Charger un fichier .ifc depuis votre ordinateur',
+        },
+        {
+          label: 'Recharger la maquette de démo',
+          onClick: reloadDemo,
+          title: 'Recharge la clinique médicale de démonstration',
+        },
       ],
     },
     {
       label: 'Vue',
       items: [
-        { label: 'Ajuster à la vue', onClick: fitView },
-        { label: 'Recentrer (iso)', onClick: recenter },
-        { label: 'Vue de dessus', onClick: topView },
-        { label: 'Projection ortho / perspective', onClick: toggleProjection },
-        { label: `${advancedRender ? '✓ ' : ''}Rendu avancé (contours/AO)`, onClick: toggleAdvancedRender },
-        { label: 'Plein écran', onClick: toggleFullscreen },
+        { label: 'Ajuster à la vue', onClick: fitView, title: 'Cadre la caméra sur tout le modèle (F)' },
+        { label: 'Recentrer (iso)', onClick: recenter, title: 'Replace la caméra en vue isométrique (R)' },
+        { label: 'Vue de dessus', onClick: topView, title: 'Vue en plan, depuis le dessus' },
+        {
+          label: 'Projection ortho / perspective',
+          onClick: toggleProjection,
+          title: 'Bascule perspective ↔ orthographique (P)',
+        },
+        {
+          label: `${advancedRender ? '✓ ' : ''}Rendu avancé (contours/AO)`,
+          onClick: toggleAdvancedRender,
+          title: 'Contours + occlusion ambiante (peut masquer des meshes selon le GPU)',
+        },
+        { label: 'Plein écran', onClick: toggleFullscreen, title: 'Bascule en plein écran' },
       ],
     },
     {
@@ -503,34 +522,71 @@ const IFCViewer: FC = () => {
     {
       label: 'Visibilité',
       items: [
-        { label: 'Isoler la sélection', onClick: isolateSelection },
-        { label: 'Masquer la sélection', onClick: hideSelection },
-        { label: 'Tout afficher', onClick: showAll },
+        {
+          label: 'Isoler la sélection',
+          onClick: isolateSelection,
+          title: 'N’afficher que les éléments sélectionnés (I)',
+        },
+        {
+          label: 'Masquer la sélection',
+          onClick: hideSelection,
+          title: 'Masquer les éléments sélectionnés',
+        },
+        { label: 'Tout afficher', onClick: showAll, title: 'Réafficher tous les éléments masqués' },
       ],
     },
     {
       label: 'Export',
       items: [
-        { label: "Capture d'écran (PNG)", onClick: screenshot },
-        { label: 'Exporter le modèle (.frag)', onClick: () => void exportModel() },
-        { label: 'Exporter les propriétés (JSON)', onClick: () => void exportProperties() },
+        {
+          label: "Capture d'écran (PNG)",
+          onClick: screenshot,
+          title: 'Enregistrer la vue courante en image PNG',
+        },
+        {
+          label: 'Exporter le modèle (.frag)',
+          onClick: () => void exportModel(),
+          title: 'Télécharger le modèle au format fragments (.frag)',
+        },
+        {
+          label: 'Exporter les propriétés (JSON)',
+          onClick: () => void exportProperties(),
+          title: 'Télécharger les propriétés de la sélection en JSON',
+        },
       ],
     },
     {
       label: 'BCF',
       items: [
-        { label: 'Nouveau topic (vue courante)', onClick: newTopic },
-        { label: 'Importer .bcf…', onClick: () => bcfInputRef.current?.click() },
-        { label: 'Exporter .bcf', onClick: () => void exportBCF() },
+        {
+          label: 'Nouveau topic (vue courante)',
+          onClick: newTopic,
+          title: 'Créer un topic BCF avec un point de vue capturé depuis la caméra',
+        },
+        {
+          label: 'Importer .bcf…',
+          onClick: () => bcfInputRef.current?.click(),
+          title: 'Charger un fichier d’échange BCF',
+        },
+        {
+          label: 'Exporter .bcf',
+          onClick: () => void exportBCF(),
+          title: 'Télécharger tous les topics au format BCF',
+        },
       ],
     },
     {
       label: 'Outils',
       items: [
-        { label: `${clipActive ? '✓ ' : ''}Plan de coupe`, onClick: () => setClipActive((v) => !v) },
+        {
+          label: `${clipActive ? '✓ ' : ''}Plan de coupe`,
+          onClick: () => setClipActive((v) => !v),
+          title: 'Active la coupe, puis double-clic (ou tap) sur le modèle pour poser un plan ; Suppr pour l’effacer (C)',
+        },
         ...(Object.keys(MEASURE_LABELS) as Exclude<MeasureMode, 'none'>[]).map((m) => ({
           label: `${measureMode === m ? '✓ ' : ''}${MEASURE_LABELS[m]}`,
           onClick: () => toggleMeasure(m),
+          title: 'Active l’outil, puis double-clic (ou tap) pour poser des points ; Suppr pour effacer',
         })),
       ],
     },
@@ -546,6 +602,7 @@ const IFCViewer: FC = () => {
         <button
           className="drawer-btn"
           aria-label="Panneaux structure et modèles"
+          title="Structure & modèles"
           onClick={() => {
             setRightOpen(false);
             setLeftOpen((v) => !v);
@@ -556,6 +613,7 @@ const IFCViewer: FC = () => {
         <button
           className="drawer-btn"
           aria-label="Panneau propriétés"
+          title="Propriétés de la sélection"
           onClick={() => {
             setLeftOpen(false);
             setRightOpen((v) => !v);
@@ -580,6 +638,7 @@ const IFCViewer: FC = () => {
                     <li key={item.label} role="none">
                       <button
                         role="menuitem"
+                        title={item.title}
                         onClick={() => {
                           item.onClick();
                           setOpenMenu(null);
@@ -595,6 +654,15 @@ const IFCViewer: FC = () => {
             </div>
           ))}
         </nav>
+        <button
+          className="help-btn"
+          aria-label="Aide : navigation 3D"
+          title="Aide : comment naviguer et utiliser les outils"
+          aria-expanded={helpOpen}
+          onClick={() => setHelpOpen((v) => !v)}
+        >
+          ?
+        </button>
         <span className="viewer-status">
           {isLoading
             ? `Chargement…${progress > 0 ? ` ${Math.round(progress * 100)}%` : ''}`
@@ -641,18 +709,67 @@ const IFCViewer: FC = () => {
       </aside>
 
       <footer className="viewer-footer">
-        <button className="tool-btn" onClick={fitView}>Ajuster</button>
-        <button className="tool-btn" onClick={recenter}>Recentrer</button>
-        <button className={`tool-btn ${clipActive ? 'active' : ''}`} aria-pressed={clipActive} onClick={() => setClipActive((v) => !v)}>Coupe</button>
-        <button className={`tool-btn ${measureMode === 'length' ? 'active' : ''}`} aria-pressed={measureMode === 'length'} onClick={() => toggleMeasure('length')}>Mesure</button>
-        <button className="tool-btn" onClick={isolateSelection}>Isoler</button>
-        <button className="tool-btn" onClick={showAll}>Tout afficher</button>
+        <button className="tool-btn" title="Cadrer la caméra sur tout le modèle (F)" onClick={fitView}>Ajuster</button>
+        <button className="tool-btn" title="Vue isométrique (R)" onClick={recenter}>Recentrer</button>
+        <button className={`tool-btn ${clipActive ? 'active' : ''}`} aria-pressed={clipActive} title="Plan de coupe : double-clic (tap) sur le modèle, Suppr pour effacer (C)" onClick={() => setClipActive((v) => !v)}>Coupe</button>
+        <button className={`tool-btn ${measureMode === 'length' ? 'active' : ''}`} aria-pressed={measureMode === 'length'} title="Mesure de distance : double-clic (tap) pour poser deux points (M)" onClick={() => toggleMeasure('length')}>Mesure</button>
+        <button className="tool-btn" title="N’afficher que la sélection (I)" onClick={isolateSelection}>Isoler</button>
+        <button className="tool-btn" title="Réafficher tous les éléments masqués" onClick={showAll}>Tout afficher</button>
         <span className="footer-hint">
           {clipActive || measureMode !== 'none'
             ? 'Double-clic / tap sur la vue'
             : 'Clinique médicale © buildingSMART · CC-BY 4.0'}
         </span>
       </footer>
+
+      {helpOpen && (
+        <>
+          <button
+            className="help-backdrop"
+            aria-label="Fermer l’aide"
+            onClick={() => setHelpOpen(false)}
+          />
+          <div className="viewer-help" role="dialog" aria-modal="true" aria-label="Aide navigation 3D">
+            <div className="help-head">
+              <span>Naviguer &amp; interagir</span>
+              <button className="help-close" aria-label="Fermer l’aide" onClick={() => setHelpOpen(false)}>
+                ✕
+              </button>
+            </div>
+            <dl className="help-list">
+              <div>
+                <dt>Rotation</dt>
+                <dd>Clic gauche + glisser · 1 doigt</dd>
+              </div>
+              <div>
+                <dt>Panoramique</dt>
+                <dd>Clic droit + glisser · 2 doigts</dd>
+              </div>
+              <div>
+                <dt>Zoom</dt>
+                <dd>Molette · pincer</dd>
+              </div>
+              <div>
+                <dt>Sélectionner</dt>
+                <dd>Clic sur un élément · tap</dd>
+              </div>
+              <div>
+                <dt>Coupe / Mesure</dt>
+                <dd>Activer l’outil, puis double-clic (tap) pour poser un point · Suppr pour effacer</dd>
+              </div>
+            </dl>
+            <div className="help-keys">
+              <span><kbd>F</kbd> ajuster</span>
+              <span><kbd>R</kbd> recentrer</span>
+              <span><kbd>P</kbd> projection</span>
+              <span><kbd>C</kbd> coupe</span>
+              <span><kbd>M</kbd> mesure</span>
+              <span><kbd>I</kbd> isoler</span>
+              <span><kbd>Échap</kbd> annuler</span>
+            </div>
+          </div>
+        </>
+      )}
 
       {toasts.length > 0 && (
         <div className="viewer-toasts" role="status" aria-live="polite">
