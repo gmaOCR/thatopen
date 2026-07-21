@@ -1,68 +1,55 @@
-# IFC Viewer - Projet Laboratoire
+# TechData · IFC Viewer
 
-## 📋 Description
-Ce projet est un visualiseur IFC. Il permet de visualiser, manipuler et analyser des modèles IFC (Industry Foundation Classes) directement dans le navigateur avec des fonctionnalités avancées.
+Visualiseur IFC (BIM) web basé sur **ThatOpen Engine v3** et **Three.js**, déployé sur
+**https://viewer.techdata.solutions**.
 
-## ✨ Fonctionnalités
+## Fonctionnalités
 
-- 🎯 Importation de fichiers IFC
-- 📑 Liste des modèles chargés
-- 🔍 Classification des éléments
-- ✂️ Plans de coupe dynamiques
-- 🖱️ Interaction au survol des éléments
-- 🎨 Personnalisation des couleurs et de l'opacité
-- 🔄 Interface utilisateur responsive
+- Chargement de fichiers **IFC** (conversion en *fragments* v3) + **maquette de démo** au démarrage.
+- Layout applicatif : topbar + menus, sidebar (arbre spatial + liste des modèles), panneau propriétés, toolbar.
+- **Sélection** au clic (propriétés) et **survol** ; arbre spatial synchronisé.
+- **Outils** : plan de coupe, mesures (longueur / surface / angle / volume).
+- **Visibilité** : isoler / masquer la sélection / tout afficher.
+- **Vue** : ajuster, recentrer, vue de dessus, projection ortho/perspective, rendu avancé (postproduction), plein écran.
+- **Export** : capture PNG, modèle `.frag`, propriétés de la sélection (JSON).
+- **Raccourcis clavier** : `F` ajuster · `R` recentrer · `P` projection · `C` coupe · `M` mesure · `I` isoler · `Échap` annuler.
 
-## 🚀 Installation
+## Stack
+
+React 19 · Vite 7 · TypeScript · `@thatopen/{components,components-front,ui,ui-obc,fragments}` 3.4.x · three 0.185 · web-ifc 0.0.77.
+Servi par Caddy (image ARM64), déployé en GitOps (Flux) sur le homelab.
+
+⚠️ **Versions figées** : l'API `@thatopen/*` casse entre mineures — ne pas mettre à jour sans revalider. Voir [`CLAUDE.md`](CLAUDE.md).
+
+## Développement
 
 ```bash
-# Cloner le repository
-git clone https://github.com/gmaOCR/thatopen.git
-
-# Se déplacer dans le dossier du projet
-cd thatopen/frontend/renderer
-
-# Installer les dépendances
+cd frontend/renderer
 npm install
-
-# Lancer le serveur de développement
-npm run dev
+npm run dev        # http://localhost:3000 (Vite) — la maquette de démo se charge automatiquement
+npm run build      # build de prod -> dist/
+npm run typecheck  # tsc --noEmit
+npm run lint       # eslint
+npm run format     # prettier --write
+npm test           # tests unitaires (Vitest)
 ```
 
-## 🛠️ Technologies utilisées
-
-- That Open BIM Components (@thatopen/components)
-- That Open UI (@thatopen/ui)
-- That Open UI OBC (@thatopen/ui-obc)
-- Three.js
-- TypeScript
-- Vite
-
-## 📁 Structure du projet
+## Structure
 
 ```
 frontend/renderer/
-├── src/
-│   ├── modules/         # Modules fonctionnels (clipper, raycaster, etc.)
-│   ├── panels/         # Composants d'interface utilisateur
-│   ├── modals/         # Boîtes de dialogue modales
-│   ├── inits/          # Initialisation du renderer
-│   ├── overrides/      # Surcharges de comportements
-│   └── index.ts        # Point d'entrée de l'application
-├── html/              # Pages HTML et assets
-└── package.json       # Dépendances et scripts
+  src/
+    App.tsx                          point d'entrée (ErrorBoundary + IFCViewer en lazy)
+    components/Viewer/IFCViewer.tsx  layout + orchestration (menus, outils, panneaux)
+    components/ErrorBoundary.tsx
+    hooks/                           useRenderer, useIFCLoader
+    services/renderer.tsx            monde 3D v3 (fragments worker, postproduction)
+  public/wasm/                       web-ifc.wasm
+  public/models/                     demo.ifc (+ ATTRIBUTION.txt)
+  Dockerfile                         build Vite -> Caddy
 ```
 
-## 🎮 Utilisation
+## Licence
 
-1. Lancez l'application avec `npm run dev`
-2. Ouvrez votre navigateur sur `http://localhost:3000`
-3. Utilisez le bouton d'importation pour charger un fichier IFC
-4. Interagissez avec le modèle :
-   - Double-clic pour créer un plan de coupe
-   - Touche Delete pour supprimer un plan
-   - Survol des éléments pour les mettre en évidence
-
-## 📝 License
-
-[MIT](LICENSE)
+Code sous [MIT](LICENSE). Maquette de démo « Duplex Apartment » © buildingSMART, **CC-BY 4.0**
+(cf. `frontend/renderer/public/models/ATTRIBUTION.txt`).

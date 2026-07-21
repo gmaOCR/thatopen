@@ -19,28 +19,10 @@ FROM --platform=linux/arm64 caddy:2-alpine
 WORKDIR /srv
 COPY --from=builder /app/dist /srv
 
-# Caddyfile par défaut — SPA : fallback vers index.html + MIME wasm (web-ifc).
-# En cluster, ce fichier est remplacé par le ConfigMap viewer-caddy-config.
-RUN printf '%s\n' \
-    '{' \
-    '    auto_https off' \
-    '}' \
-    '' \
-    ':3000 {' \
-    '    root * /srv' \
-    '    encode gzip' \
-    '' \
-    '    @wasm path *.wasm' \
-    '    header @wasm Content-Type application/wasm' \
-    '' \
-    '    @assets path /assets/*' \
-    '    header @assets Cache-Control "public, max-age=31536000, immutable"' \
-    '    @html path *.html /' \
-    '    header @html Cache-Control "no-cache"' \
-    '' \
-    '    try_files {path} /index.html' \
-    '    file_server' \
-    '}' > /etc/caddy/Caddyfile
+# Caddyfile versionné (SPA + MIME wasm + en-têtes de sécurité + CSP Report-Only).
+# En cluster, il est remplacé par le ConfigMap viewer-caddy-config — qui DOIT
+# porter les mêmes en-têtes (le fichier embarqué sert de filet par défaut).
+COPY Caddyfile /etc/caddy/Caddyfile
 
 EXPOSE 3000
 

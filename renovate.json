@@ -1,0 +1,19 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "schedule:monthly"],
+  "labels": ["dependencies"],
+  "packageRules": [
+    {
+      "description": "Stack ThatOpen figée : l'API casse entre mineures, mises à jour manuelles uniquement.",
+      "matchPackageNames": ["/^@thatopen//", "three", "web-ifc", "camera-controls"],
+      "enabled": false
+    },
+    {
+      "description": "Digests d'images Docker et actions GitHub : regroupés, sécurité.",
+      "matchDatasources": ["docker"],
+      "groupName": "docker digests"
+    }
+  ],
+  "github-actions": { "enabled": true },
+  "vulnerabilityAlerts": { "enabled": true }
+}
