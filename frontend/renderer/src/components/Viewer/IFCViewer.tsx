@@ -9,7 +9,8 @@ import { useIFCLoader } from '../../hooks/useIFCLoader';
 
 // ponytail: IFC brut au démarrage ; pré-conversion .frag = optimisation ultérieure.
 const DEFAULT_MODEL_URL = '/models/demo.ifc';
-const DEFAULT_MODEL_ID = 'Duplex Apartment';
+const DEFAULT_MODEL_ID = 'Clinique médicale (démo)';
+const DEFAULT_FRAG_URL = '/models/demo.frag';
 
 type ItemsUpdate = ReturnType<typeof CUI.tables.itemsData>[1];
 type SpatialUpdate = ReturnType<typeof CUI.tables.spatialTree>[1];
@@ -60,9 +61,11 @@ const IFCViewer: FC = () => {
   const [measureMode, setMeasureMode] = useState<MeasureMode>('none');
   const [advancedRender, setAdvancedRender] = useState(false);
   const [floorViews, setFloorViews] = useState<string[]>([]);
+  const [leftOpen, setLeftOpen] = useState(false);
+  const [rightOpen, setRightOpen] = useState(false);
 
   const { components, world, isInitialized } = useRenderer(containerRef);
-  const { loadIFC, loadIFCBuffer, loadedModels } = useIFCLoader(
+  const { loadIFC, loadIFCBuffer, loadFragments, loadedModels } = useIFCLoader(
     components,
     world,
     setIsLoading,
@@ -142,21 +145,28 @@ const IFCViewer: FC = () => {
     };
   }, [isInitialized, components, world]);
 
+  // Charge la maquette de démo : .frag pré-converti (instantané) si présent,
+  // sinon l'IFC brut (parsé au runtime).
+  const loadDemo = useCallback(async () => {
+    try {
+      const frag = await fetch(DEFAULT_FRAG_URL);
+      if (frag.ok) {
+        await loadFragments(await frag.arrayBuffer(), DEFAULT_MODEL_ID);
+        return;
+      }
+      const ifc = await fetch(DEFAULT_MODEL_URL);
+      if (ifc.ok) await loadIFCBuffer(new Uint8Array(await ifc.arrayBuffer()), DEFAULT_MODEL_ID);
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : 'Maquette de démo indisponible', 'error');
+    }
+  }, [loadFragments, loadIFCBuffer, pushToast]);
+
   // --- Maquette de démo au démarrage ---
   useEffect(() => {
     if (!isInitialized || !components || defaultLoaded.current) return;
     defaultLoaded.current = true;
-    void (async () => {
-      try {
-        const res = await fetch(DEFAULT_MODEL_URL);
-        if (!res.ok) return;
-        const buffer = new Uint8Array(await res.arrayBuffer());
-        await loadIFCBuffer(buffer, DEFAULT_MODEL_ID);
-      } catch (e) {
-        console.warn('Maquette de démo indisponible :', e);
-      }
-    })();
-  }, [isInitialized, components, loadIFCBuffer]);
+    void loadDemo();
+  }, [isInitialized, components, loadDemo]);
 
   const fitView = useCallback(() => {
     if (!world || loadedModels.length === 0) return;
@@ -246,6 +256,40 @@ const IFCViewer: FC = () => {
       tool.enabled = false;
     };
   }, [components, world, measureMode]);
+
+  // --- Interaction tactile (mobile) : un tap = sélection, ou pose un point si un
+  //     outil (coupe/mesure) est actif. Le desktop garde le clic/double-clic natif.
+  //     (camera-controls gère déjà pan/zoom/rotate tactile ; le raycast lit la
+  //     position du tap — seul le déclencheur souris manque au tactile.) ---
+  useEffect(() => {
+    if (!components || !world) return;
+    const el = world.renderer?.three.domElement;
+    if (!el) return;
+    const highlighter = components.get(OBF.Highlighter);
+    let down: { x: number; y: number } | null = null;
+    const onDown = (e: PointerEvent) => {
+      if (e.pointerType === 'touch') down = { x: e.clientX, y: e.clientY };
+    };
+    const onUp = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch' || !down) return;
+      const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
+      down = null;
+      if (moved > 8) return; // déplacement (pan), pas un tap
+      if (clipActive) {
+        void components.get(OBC.Clipper).create(world);
+      } else if (measureMode !== 'none') {
+        void components.get(MEASURE_TOOLS[measureMode] as typeof OBF.LengthMeasurement).create();
+      } else {
+        void highlighter.highlight(highlighter.config.selectName);
+      }
+    };
+    el.addEventListener('pointerdown', onDown);
+    el.addEventListener('pointerup', onUp);
+    return () => {
+      el.removeEventListener('pointerdown', onDown);
+      el.removeEventListener('pointerup', onUp);
+    };
+  }, [components, world, clipActive, measureMode]);
 
   const toggleMeasure = useCallback(
     (m: Exclude<MeasureMode, 'none'>) => setMeasureMode((cur) => (cur === m ? 'none' : m)),
@@ -390,16 +434,9 @@ const IFCViewer: FC = () => {
   );
 
   const reloadDemo = useCallback(() => {
-    defaultLoaded.current = false;
-    void (async () => {
-      try {
-        const res = await fetch(DEFAULT_MODEL_URL);
-        if (res.ok) await loadIFCBuffer(new Uint8Array(await res.arrayBuffer()), DEFAULT_MODEL_ID);
-      } catch (e) {
-        pushToast(e instanceof Error ? e.message : 'Rechargement de la démo impossible', 'error');
-      }
-    })();
-  }, [loadIFCBuffer, pushToast]);
+    fittedOnce.current = false;
+    void loadDemo();
+  }, [loadDemo]);
 
   // --- Raccourcis clavier (ignorés quand on tape dans un champ) ---
   useEffect(() => {
@@ -500,9 +537,32 @@ const IFCViewer: FC = () => {
   ];
 
   return (
-    <div className="app-container" ref={appRef}>
+    <div
+      className={`app-container${leftOpen ? ' left-open' : ''}${rightOpen ? ' right-open' : ''}`}
+      ref={appRef}
+    >
       <header className="viewer-topbar">
         <span className="viewer-brand">TechData · IFC Viewer</span>
+        <button
+          className="drawer-btn"
+          aria-label="Panneaux structure et modèles"
+          onClick={() => {
+            setRightOpen(false);
+            setLeftOpen((v) => !v);
+          }}
+        >
+          ☰
+        </button>
+        <button
+          className="drawer-btn"
+          aria-label="Panneau propriétés"
+          onClick={() => {
+            setLeftOpen(false);
+            setRightOpen((v) => !v);
+          }}
+        >
+          ⓘ
+        </button>
         <nav className="viewer-menus">
           {menus.map((menu) => (
             <div className="menu" key={menu.label}>
@@ -588,7 +648,9 @@ const IFCViewer: FC = () => {
         <button className="tool-btn" onClick={isolateSelection}>Isoler</button>
         <button className="tool-btn" onClick={showAll}>Tout afficher</button>
         <span className="footer-hint">
-          {clipActive || measureMode !== 'none' ? 'Double-clic sur la vue' : 'Duplex Apartment © buildingSMART · CC-BY 4.0'}
+          {clipActive || measureMode !== 'none'
+            ? 'Double-clic / tap sur la vue'
+            : 'Clinique médicale © buildingSMART · CC-BY 4.0'}
         </span>
       </footer>
 
@@ -598,6 +660,17 @@ const IFCViewer: FC = () => {
             <div key={t.id} className={`toast toast-${t.type}`}>{t.msg}</div>
           ))}
         </div>
+      )}
+
+      {(leftOpen || rightOpen) && (
+        <button
+          className="drawer-backdrop"
+          aria-label="Fermer les panneaux"
+          onClick={() => {
+            setLeftOpen(false);
+            setRightOpen(false);
+          }}
+        />
       )}
     </div>
   );

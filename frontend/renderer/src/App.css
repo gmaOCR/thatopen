@@ -38,6 +38,30 @@
   white-space: nowrap;
 }
 
+/* Boutons de drawer + backdrop : cachés en desktop, activés en mobile (média <=720px). */
+.drawer-btn {
+  display: none;
+  align-items: center;
+  background: transparent;
+  border: 1px solid rgba(55, 212, 238, 0.3);
+  color: var(--td-ink);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.drawer-backdrop {
+  display: none;
+  position: fixed;
+  inset: 52px 0 0 0;
+  z-index: 34;
+  background: rgba(0, 0, 0, 0.45);
+  border: 0;
+  padding: 0;
+}
+
 .viewer-menus {
   display: flex;
   gap: 4px;
@@ -273,9 +297,35 @@
       'viewport'
       'footer';
   }
+  /* Sidebars en drawers off-canvas, ouverts via ☰ / ⓘ. */
   .viewer-left,
   .viewer-right {
-    display: none;
+    position: fixed;
+    top: 52px;
+    bottom: 0;
+    width: 86%;
+    max-width: 340px;
+    z-index: 35;
+    transition: transform 0.25s ease;
+    box-shadow: 0 0 30px rgba(0, 0, 0, 0.6);
+  }
+  .viewer-left {
+    left: 0;
+    transform: translateX(-102%);
+  }
+  .viewer-right {
+    right: 0;
+    transform: translateX(102%);
+  }
+  .app-container.left-open .viewer-left,
+  .app-container.right-open .viewer-right {
+    transform: none;
+  }
+  .drawer-btn {
+    display: inline-flex;
+  }
+  .drawer-backdrop {
+    display: block;
   }
   .viewer-menus,
   .viewer-footer {

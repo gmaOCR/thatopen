@@ -34,7 +34,7 @@ types installés (`node_modules/@thatopen/*/dist/index.d.ts`) et revalider `buil
 - Panneaux prêts : `CUI.tables.spatialTree`, `tables.modelsList`, `tables.itemsData` ; `BUI.Manager.init()` + `CUI.Manager.init()` requis.
 
 ## Maquette par défaut
-`public/models/demo.ifc` = buildingSMART **Duplex Apartment**, licence **CC-BY 4.0** (cf `public/models/ATTRIBUTION.txt`). Créditer.
+`public/models/demo.frag` (pré-converti depuis `demo.ifc` via `scripts/convert-ifc.mjs`) = buildingSMART **Clinique médicale/dentaire** (Clinic_Architectural), licence **CC-BY 4.0** (cf `public/models/ATTRIBUTION.txt`). Créditer. Chargé au démarrage en `.frag` (instantané), fallback `.ifc`.
 
 ## Déploiement (homelab GitOps, modèle app `cv`)
 1. Build+push : `frontend/renderer/scripts/deploy-local.sh` → `registry.gregorymariani.com/viewer:main-<UTC-ts>`.

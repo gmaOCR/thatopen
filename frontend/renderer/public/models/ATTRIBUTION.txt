@@ -1,9 +1,10 @@
-Maquette de démonstration : "Duplex Apartment" (Duplex_A_20110907.ifc)
+Maquette de démonstration : "Medical-Dental Clinic — Architectural" (Clinic_Architectural.ifc)
 Source : buildingSMART Community Sample Test Files
   https://github.com/buildingsmart-community/Community-Sample-Test-Files
 Licence : Creative Commons Attribution 4.0 International (CC-BY 4.0)
   https://creativecommons.org/licenses/by/4.0/
-Attribution : « Duplex Apartment © buildingSMART, CC-BY 4.0 »
+Attribution : « Clinique médicale © buildingSMART, CC-BY 4.0 »
 
-Ce modèle est redistribué avec attribution conformément à la licence CC-BY 4.0.
-Un crédit visible sera intégré dans l'UI (Phase A).
+Redistribué avec attribution conformément à CC-BY 4.0 ; crédit visible affiché dans la
+toolbar de l'app. Le fichier est pré-converti en fragments (demo.frag) via
+scripts/convert-ifc.mjs pour un chargement instantané.
