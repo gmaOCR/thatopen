@@ -20,6 +20,7 @@ export const useIFCLoader = (
   components: OBC.Components | null,
   world: ViewerWorld | null,
   setIsLoading: (loading: boolean) => void,
+  onProgress?: (fraction: number) => void,
 ) => {
   const [loadedModels, setLoadedModels] = useState<LoadedModel[]>([]);
 
@@ -49,12 +50,21 @@ export const useIFCLoader = (
       try {
         const ifcLoader = components.get(OBC.IfcLoader);
         await ifcLoader.setup({ autoSetWasm: false, wasm: { path: WASM_PATH, absolute: true } });
-        return await ifcLoader.load(buffer, true, id);
+        onProgress?.(0);
+        // progressCallback (0..1) : conversion IFC -> fragments. Pour de très gros
+        // modèles, préférer un .frag pré-converti (loadFragments) — l'IFC brut est
+        // chargé intégralement en mémoire ici.
+        return await ifcLoader.load(buffer, true, id, {
+          processData: {
+            progressCallback: (p: number) => onProgress?.(Math.max(0, Math.min(1, p))),
+          },
+        });
       } finally {
+        onProgress?.(1);
         setIsLoading(false);
       }
     },
-    [components, setIsLoading],
+    [components, setIsLoading, onProgress],
   );
 
   const loadIFC = useCallback(

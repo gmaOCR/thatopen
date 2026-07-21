@@ -52,6 +52,7 @@ const IFCViewer: FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [isLoading, setIsLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [toasts, setToasts] = useState<{ id: number; msg: string; type: 'error' | 'info' }[]>([]);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [clipActive, setClipActive] = useState(false);
@@ -59,7 +60,12 @@ const IFCViewer: FC = () => {
   const [advancedRender, setAdvancedRender] = useState(false);
 
   const { components, world, isInitialized } = useRenderer(containerRef);
-  const { loadIFC, loadIFCBuffer, loadedModels } = useIFCLoader(components, world, setIsLoading);
+  const { loadIFC, loadIFCBuffer, loadedModels } = useIFCLoader(
+    components,
+    world,
+    setIsLoading,
+    setProgress,
+  );
   const defaultLoaded = useRef(false);
   const fittedOnce = useRef(false);
   const selectionRef = useRef<OBC.ModelIdMap>({});
@@ -327,10 +333,14 @@ const IFCViewer: FC = () => {
   const reloadDemo = useCallback(() => {
     defaultLoaded.current = false;
     void (async () => {
-      const res = await fetch(DEFAULT_MODEL_URL);
-      if (res.ok) await loadIFCBuffer(new Uint8Array(await res.arrayBuffer()), DEFAULT_MODEL_ID);
+      try {
+        const res = await fetch(DEFAULT_MODEL_URL);
+        if (res.ok) await loadIFCBuffer(new Uint8Array(await res.arrayBuffer()), DEFAULT_MODEL_ID);
+      } catch (e) {
+        pushToast(e instanceof Error ? e.message : 'Rechargement de la démo impossible', 'error');
+      }
     })();
-  }, [loadIFCBuffer]);
+  }, [loadIFCBuffer, pushToast]);
 
   // --- Raccourcis clavier (ignorés quand on tape dans un champ) ---
   useEffect(() => {
@@ -344,13 +354,23 @@ const IFCViewer: FC = () => {
         case 'c': setClipActive((v) => !v); break;
         case 'm': toggleMeasure('length'); break;
         case 'i': isolateSelection(); break;
-        case 'escape': setClipActive(false); setMeasureMode('none'); break;
+        case 'escape': setOpenMenu(null); setClipActive(false); setMeasureMode('none'); break;
         default: return;
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [fitView, recenter, toggleProjection, toggleMeasure, isolateSelection]);
+
+  // Ferme le menu ouvert au clic en dehors (a11y : pas de handler sur un div statique).
+  useEffect(() => {
+    if (!openMenu) return;
+    const onDown = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest('.viewer-menus')) setOpenMenu(null);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [openMenu]);
 
   const menus: MenuDef[] = [
     {
@@ -400,23 +420,32 @@ const IFCViewer: FC = () => {
   ];
 
   return (
-    <div className="app-container" ref={appRef} onClick={() => openMenu && setOpenMenu(null)}>
+    <div className="app-container" ref={appRef}>
       <header className="viewer-topbar">
         <span className="viewer-brand">TechData · IFC Viewer</span>
-        <nav className="viewer-menus" onClick={(e) => e.stopPropagation()}>
+        <nav className="viewer-menus">
           {menus.map((menu) => (
             <div className="menu" key={menu.label}>
               <button
                 className={`menu-btn ${openMenu === menu.label ? 'open' : ''}`}
+                aria-haspopup="menu"
+                aria-expanded={openMenu === menu.label}
                 onClick={() => setOpenMenu((m) => (m === menu.label ? null : menu.label))}
               >
                 {menu.label}
               </button>
               {openMenu === menu.label && (
-                <ul className="menu-dropdown">
+                <ul className="menu-dropdown" role="menu">
                   {menu.items.map((item) => (
-                    <li key={item.label}>
-                      <button onClick={() => { item.onClick(); setOpenMenu(null); }} disabled={item.disabled}>
+                    <li key={item.label} role="none">
+                      <button
+                        role="menuitem"
+                        onClick={() => {
+                          item.onClick();
+                          setOpenMenu(null);
+                        }}
+                        disabled={item.disabled}
+                      >
                         {item.label}
                       </button>
                     </li>
@@ -427,12 +456,26 @@ const IFCViewer: FC = () => {
           ))}
         </nav>
         <span className="viewer-status">
-          {isLoading ? 'Chargement…' : `${loadedModels.length} modèle(s)`}
+          {isLoading
+            ? `Chargement…${progress > 0 ? ` ${Math.round(progress * 100)}%` : ''}`
+            : `${loadedModels.length} modèle(s)`}
         </span>
         <input ref={fileInputRef} type="file" accept=".ifc" onChange={handleFileChange} style={{ display: 'none' }} />
       </header>
 
-      {isLoading && <div className="viewer-loading" />}
+      {isLoading && (
+        <div
+          className="viewer-loading"
+          role="progressbar"
+          aria-label="Chargement du modèle"
+          aria-valuenow={Math.round(progress * 100)}
+        >
+          <span
+            className="viewer-loading-bar"
+            style={progress > 0 ? { width: `${Math.round(progress * 100)}%` } : undefined}
+          />
+        </div>
+      )}
 
       <aside className="viewer-left">
         <div className="panel-title">Structure &amp; modèles</div>
@@ -449,8 +492,8 @@ const IFCViewer: FC = () => {
       <footer className="viewer-footer">
         <button className="tool-btn" onClick={fitView}>Ajuster</button>
         <button className="tool-btn" onClick={recenter}>Recentrer</button>
-        <button className={`tool-btn ${clipActive ? 'active' : ''}`} onClick={() => setClipActive((v) => !v)}>Coupe</button>
-        <button className={`tool-btn ${measureMode === 'length' ? 'active' : ''}`} onClick={() => toggleMeasure('length')}>Mesure</button>
+        <button className={`tool-btn ${clipActive ? 'active' : ''}`} aria-pressed={clipActive} onClick={() => setClipActive((v) => !v)}>Coupe</button>
+        <button className={`tool-btn ${measureMode === 'length' ? 'active' : ''}`} aria-pressed={measureMode === 'length'} onClick={() => toggleMeasure('length')}>Mesure</button>
         <button className="tool-btn" onClick={isolateSelection}>Isoler</button>
         <button className="tool-btn" onClick={showAll}>Tout afficher</button>
         <span className="footer-hint">
@@ -459,7 +502,7 @@ const IFCViewer: FC = () => {
       </footer>
 
       {toasts.length > 0 && (
-        <div className="viewer-toasts">
+        <div className="viewer-toasts" role="status" aria-live="polite">
           {toasts.map((t) => (
             <div key={t.id} className={`toast toast-${t.type}`}>{t.msg}</div>
           ))}

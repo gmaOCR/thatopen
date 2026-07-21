@@ -1,6 +1,6 @@
 # Viewer IFC TechData — guide projet
 
-Viewer IFC web (BIM) basé sur **ThatOpen Engine v3** + **React 18/19** + **Vite**.
+Viewer IFC web (BIM) basé sur **ThatOpen Engine v3** + **React 19** + **Vite 7**.
 Code : `frontend/renderer/`. Publié sur **https://viewer.techdata.solutions** (homelab mercure-rpi5, GitOps Flux).
 
 ## Commandes (dans `frontend/renderer/`)
@@ -9,9 +9,11 @@ npm install
 npm run dev        # serveur de dev (Vite, :3000)
 npm run build      # build de prod -> dist/
 npm run typecheck  # tsc --noEmit -p tsconfig.app.json
-npm run lint       # eslint
+npm run lint       # eslint (dont jsx-a11y)
+npm run format     # prettier --write
 npm test           # jest
 ```
+Avant tout commit/déploiement : `npm run typecheck && npm run lint && npm test && npm run build` (skill `release-check`).
 
 ## Stack — FIGÉE (ne pas bumper à la légère)
 `@thatopen/components|components-front|ui|ui-obc|fragments` **3.4.x**, `three` 0.185,
@@ -27,7 +29,8 @@ types installés (`node_modules/@thatopen/*/dist/index.d.ts`) et revalider `buil
 - WASM web-ifc servi localement depuis `public/wasm/` → `ifcLoader.setup({ autoSetWasm:false, wasm:{ path:"/wasm/", absolute:true } })`.
 - Chargement : `ifcLoader.load(buffer, coordinate, name)` (IFC→fragments) ou `fragments.core.load(buffer,{modelId,camera})` (.frag).
   Les modèles se **montent dans la scène** via l'event `fragments.list.onItemSet` (`model.useCamera`, `scene.three.add(model.object)`, `fragments.core.update(true)`).
-- Sélection : `OBF.Highlighter` (`setup({world})`, `events[selectName].onHighlight/onClear` → `ModelIdMap`).
+- Renderer : **`OBF.PostproductionRenderer`** (PAS `SimpleRenderer`) — couche CSS2D indispensable aux mesures + `preserveDrawingBuffer:true` pour la capture PNG ; postproduction (contours/AO) en option (menu Vue, défaut OFF car peut masquer des meshes instanciés selon le GPU).
+- Sélection : `OBF.Highlighter` (`setup({world})`, `events[selectName].onHighlight/onClear` → `ModelIdMap`) ; survol `OBF.Hoverer` ; visibilité `OBC.Hider` ; mesures `OBF.{Length,Area,Angle,Volume}Measurement`.
 - Panneaux prêts : `CUI.tables.spatialTree`, `tables.modelsList`, `tables.itemsData` ; `BUI.Manager.init()` + `CUI.Manager.init()` requis.
 
 ## Maquette par défaut
@@ -40,3 +43,15 @@ types installés (`node_modules/@thatopen/*/dist/index.d.ts`) et revalider `buil
 4. TLS auto via cert-manager (`letsencrypt-prod`, HTTP-01).
 
 Voir `.claude/skills/deploy-viewer/`.
+
+## Source Flux (infra) — HTTPS
+La `GitRepository` flux-system est en **HTTPS** (`https://github.com/gmaOCR/kubernetes`, secret `flux-system-https`, `timeout: 180s`) : le clone **SSH** depuis le pod source-controller timeoutait (`context deadline exceeded`). **Ne pas revenir à SSH.** Détails : mémoire `flux-gitrepository-timeout`.
+
+## Backlog durcissement (audit 2026-07-21 — différé, non bloquant)
+- **Tests** : migrer Jest → **Vitest** (natif Vite) + élargir la couverture (recentrage, raccourcis, toasts, `ErrorBoundary`).
+- **tsconfig strict+** : activer `noUncheckedIndexedAccess` + `exactOptionalPropertyTypes` (corriger la cascade d'erreurs).
+- **CSP** : le Caddyfile pose `Content-Security-Policy-Report-Only` → passer en enforce après validation navigateur ; **répliquer les en-têtes de sécurité dans le ConfigMap k8s `viewer-caddy-config`** (le Caddyfile de l'image n'est qu'un défaut, remplacé en cluster).
+- **Docker** : épingler `node`/`caddy` par digest (Renovate) + `USER` non-root (vérifier l'accès `/data` de caddy).
+- **Perf gros modèles** : pré-convertir `demo.ifc` → `demo.frag` (serializer offline) et charger via `loadFragments` (démarrage instantané + streaming/LOD). L'IFC brut est chargé intégralement en mémoire → non viable au-delà de ~centaines de Mo.
+- **COOP/COEP** : requis pour le web-ifc multithread (SharedArrayBuffer) ; sinon le mono-thread suffit (`web-ifc-mt.wasm` retiré).
+- **Pre-commit** : `simple-git-hooks` + `lint-staged` (typecheck+lint sur le staged).

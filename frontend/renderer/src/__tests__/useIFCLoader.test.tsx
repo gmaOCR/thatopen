@@ -49,7 +49,8 @@ const makeEnv = () => {
 describe('useIFCLoader (v3)', () => {
   it('configure le wasm et importe le buffer IFC via IfcLoader', async () => {
     const { components, world, ifcLoader } = makeEnv();
-    const { result } = renderHook(() => useIFCLoader(components, world, () => {}));
+    const onProgress = jest.fn();
+    const { result } = renderHook(() => useIFCLoader(components, world, () => {}, onProgress));
 
     await act(async () => {
       await result.current.loadIFCBuffer(new Uint8Array([1, 2, 3]), 'demo');
@@ -58,7 +59,14 @@ describe('useIFCLoader (v3)', () => {
     expect(ifcLoader.setup).toHaveBeenCalledWith(
       expect.objectContaining({ autoSetWasm: false, wasm: { path: '/wasm/', absolute: true } }),
     );
-    expect(ifcLoader.load).toHaveBeenCalledWith(expect.any(Uint8Array), true, 'demo');
+    expect(ifcLoader.load).toHaveBeenCalledWith(
+      expect.any(Uint8Array),
+      true,
+      'demo',
+      expect.any(Object),
+    );
+    expect(onProgress).toHaveBeenCalledWith(0);
+    expect(onProgress).toHaveBeenCalledWith(1);
   });
 
   it('monte dans la scène et suit tout modèle ajouté au moteur', async () => {
