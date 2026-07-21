@@ -42,7 +42,10 @@ export const initRenderer = async (container: HTMLElement): Promise<ViewerHandle
   >();
 
   world.scene = new OBC.SimpleScene(components);
-  world.renderer = new OBF.PostproductionRenderer(components, container);
+  // preserveDrawingBuffer: permet la capture d'écran (canvas.toDataURL).
+  world.renderer = new OBF.PostproductionRenderer(components, container, {
+    preserveDrawingBuffer: true,
+  });
   world.camera = new OBC.OrthoPerspectiveCamera(components);
 
   components.init();

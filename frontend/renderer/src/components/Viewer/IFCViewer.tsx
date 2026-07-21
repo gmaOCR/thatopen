@@ -37,6 +37,13 @@ const MEASURE_LABELS: Record<Exclude<MeasureMode, 'none'>, string> = {
 
 const hasSelection = (map: OBC.ModelIdMap) => Object.keys(map).length > 0;
 
+const download = (href: string, name: string) => {
+  const a = document.createElement('a');
+  a.href = href;
+  a.download = name;
+  a.click();
+};
+
 const IFCViewer: FC = () => {
   const appRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -277,6 +284,36 @@ const IFCViewer: FC = () => {
     void components.get(OBC.Hider).set(true);
   }, [components]);
 
+  // --- Export ---
+  const screenshot = useCallback(() => {
+    const canvas = world?.renderer?.three.domElement;
+    if (!canvas) return;
+    download(canvas.toDataURL('image/png'), 'techdata-viewer.png');
+  }, [world]);
+
+  const exportModel = useCallback(async () => {
+    const entry = loadedModels[0];
+    if (!entry) return;
+    const buffer = await entry.model.getBuffer(false);
+    const url = URL.createObjectURL(new Blob([buffer]));
+    download(url, `${entry.id}.frag`);
+    URL.revokeObjectURL(url);
+  }, [loadedModels]);
+
+  const exportProperties = useCallback(async () => {
+    if (!components || !hasSelection(selectionRef.current)) return;
+    try {
+      const data = await components.get(OBC.FragmentsManager).getData(selectionRef.current);
+      const url = URL.createObjectURL(
+        new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }),
+      );
+      download(url, 'proprietes.json');
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Export des propriétés impossible');
+    }
+  }, [components]);
+
   const reloadDemo = useCallback(() => {
     defaultLoaded.current = false;
     setError(null);
@@ -311,6 +348,14 @@ const IFCViewer: FC = () => {
         { label: 'Isoler la sélection', onClick: isolateSelection },
         { label: 'Masquer la sélection', onClick: hideSelection },
         { label: 'Tout afficher', onClick: showAll },
+      ],
+    },
+    {
+      label: 'Export',
+      items: [
+        { label: "Capture d'écran (PNG)", onClick: screenshot },
+        { label: 'Exporter le modèle (.frag)', onClick: () => void exportModel() },
+        { label: 'Exporter les propriétés (JSON)', onClick: () => void exportProperties() },
       ],
     },
     {
