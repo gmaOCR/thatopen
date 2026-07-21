@@ -52,7 +52,7 @@ const IFCViewer: FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<{ id: number; msg: string; type: 'error' | 'info' }[]>([]);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [clipActive, setClipActive] = useState(false);
   const [measureMode, setMeasureMode] = useState<MeasureMode>('none');
@@ -65,6 +65,13 @@ const IFCViewer: FC = () => {
   const selectionRef = useRef<OBC.ModelIdMap>({});
   const itemsUpdate = useRef<ItemsUpdate | null>(null);
   const spatialUpdate = useRef<SpatialUpdate | null>(null);
+  const toastId = useRef(0);
+
+  const pushToast = useCallback((msg: string, type: 'error' | 'info' = 'info') => {
+    const id = (toastId.current += 1);
+    setToasts((t) => [...t, { id, msg, type }]);
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3500);
+  }, []);
 
   // --- Panneaux CUI + sélection + survol ---
   useEffect(() => {
@@ -226,11 +233,11 @@ const IFCViewer: FC = () => {
   const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    setError(null);
     try {
       await loadIFC(file);
+      pushToast('Modèle chargé', 'info');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Erreur de chargement');
+      pushToast(e instanceof Error ? e.message : 'Erreur de chargement', 'error');
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
@@ -289,7 +296,8 @@ const IFCViewer: FC = () => {
     const canvas = world?.renderer?.three.domElement;
     if (!canvas) return;
     download(canvas.toDataURL('image/png'), 'techdata-viewer.png');
-  }, [world]);
+    pushToast('Capture enregistrée', 'info');
+  }, [world, pushToast]);
 
   const exportModel = useCallback(async () => {
     const entry = loadedModels[0];
@@ -298,7 +306,8 @@ const IFCViewer: FC = () => {
     const url = URL.createObjectURL(new Blob([buffer]));
     download(url, `${entry.id}.frag`);
     URL.revokeObjectURL(url);
-  }, [loadedModels]);
+    pushToast('Modèle exporté (.frag)', 'info');
+  }, [loadedModels, pushToast]);
 
   const exportProperties = useCallback(async () => {
     if (!components || !hasSelection(selectionRef.current)) return;
@@ -309,19 +318,39 @@ const IFCViewer: FC = () => {
       );
       download(url, 'proprietes.json');
       URL.revokeObjectURL(url);
+      pushToast('Propriétés exportées', 'info');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Export des propriétés impossible');
+      pushToast(e instanceof Error ? e.message : 'Export des propriétés impossible', 'error');
     }
-  }, [components]);
+  }, [components, pushToast]);
 
   const reloadDemo = useCallback(() => {
     defaultLoaded.current = false;
-    setError(null);
     void (async () => {
       const res = await fetch(DEFAULT_MODEL_URL);
       if (res.ok) await loadIFCBuffer(new Uint8Array(await res.arrayBuffer()), DEFAULT_MODEL_ID);
     })();
   }, [loadIFCBuffer]);
+
+  // --- Raccourcis clavier (ignorés quand on tape dans un champ) ---
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+      switch (e.key.toLowerCase()) {
+        case 'f': fitView(); break;
+        case 'r': recenter(); break;
+        case 'p': toggleProjection(); break;
+        case 'c': setClipActive((v) => !v); break;
+        case 'm': toggleMeasure('length'); break;
+        case 'i': isolateSelection(); break;
+        case 'escape': setClipActive(false); setMeasureMode('none'); break;
+        default: return;
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [fitView, recenter, toggleProjection, toggleMeasure, isolateSelection]);
 
   const menus: MenuDef[] = [
     {
@@ -400,7 +429,6 @@ const IFCViewer: FC = () => {
         <span className="viewer-status">
           {isLoading ? 'Chargement…' : `${loadedModels.length} modèle(s)`}
         </span>
-        {error && <span className="viewer-error">{error}</span>}
         <input ref={fileInputRef} type="file" accept=".ifc" onChange={handleFileChange} style={{ display: 'none' }} />
       </header>
 
@@ -429,6 +457,14 @@ const IFCViewer: FC = () => {
           {clipActive || measureMode !== 'none' ? 'Double-clic sur la vue' : 'Duplex Apartment © buildingSMART · CC-BY 4.0'}
         </span>
       </footer>
+
+      {toasts.length > 0 && (
+        <div className="viewer-toasts">
+          {toasts.map((t) => (
+            <div key={t.id} className={`toast toast-${t.type}`}>{t.msg}</div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
