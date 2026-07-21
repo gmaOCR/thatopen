@@ -6,6 +6,7 @@ import * as OBF from '@thatopen/components-front';
 import * as CUI from '@thatopen/ui-obc';
 import { useRenderer } from '../../hooks/useRenderer';
 import { useIFCLoader } from '../../hooks/useIFCLoader';
+import { mergeMaps, countIds, escapeRegExp } from './queries';
 
 // ponytail: IFC brut au démarrage ; pré-conversion .frag = optimisation ultérieure.
 const DEFAULT_MODEL_URL = '/models/demo.ifc';
@@ -64,6 +65,10 @@ const IFCViewer: FC = () => {
   const [leftOpen, setLeftOpen] = useState(false);
   const [rightOpen, setRightOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [searchText, setSearchText] = useState('');
+  const [categories, setCategories] = useState<string[]>([]);
+  const [qtoOpen, setQtoOpen] = useState(false);
+  const [qtoRows, setQtoRows] = useState<{ category: string; count: number }[]>([]);
 
   const { components, world, isInitialized } = useRenderer(containerRef);
   const { loadIFC, loadIFCBuffer, loadFragments, loadedModels } = useIFCLoader(
@@ -184,7 +189,16 @@ const IFCViewer: FC = () => {
     const fragments = components.get(OBC.FragmentsManager);
     let cancelled = false;
     void fragments.core.update(true).then(async () => {
-      if (cancelled || fittedOnce.current) return;
+      if (cancelled) return;
+      // Catégories présentes (autocomplétion recherche + métré) — data prête après update(true).
+      try {
+        const cats = new Set<string>();
+        for (const { model } of loadedModels) for (const c of await model.getCategories()) cats.add(c);
+        setCategories([...cats].sort());
+      } catch {
+        /* données pas encore prêtes */
+      }
+      if (fittedOnce.current) return;
       fittedOnce.current = true;
       const first = loadedModels[0]?.model;
       if (first) {
@@ -360,6 +374,61 @@ const IFCViewer: FC = () => {
     void components.get(OBC.Hider).set(true);
   }, [components]);
 
+  // --- Recherche / filtre d'éléments (par nom OU catégorie IFC) ---
+  const runSearch = useCallback(
+    async (mode: 'highlight' | 'isolate') => {
+      const text = searchText.trim();
+      if (!components || !text) return;
+      const rx = new RegExp(escapeRegExp(text), 'i');
+      try {
+        const finder = components.get(OBC.ItemsFinder);
+        const [byName, byCat] = await Promise.all([
+          finder.getItems([{ attributes: { queries: [{ name: /^Name$/i, value: rx }] } }]),
+          finder.getItems([{ categories: [rx] }]),
+        ]);
+        const map = mergeMaps(byName, byCat);
+        const count = countIds(map);
+        if (count === 0) {
+          pushToast('Aucun résultat', 'info');
+          return;
+        }
+        if (mode === 'isolate') {
+          await components.get(OBC.Hider).isolate(map);
+          pushToast(`${count} élément(s) isolé(s)`, 'info');
+        } else {
+          const highlighter = components.get(OBF.Highlighter);
+          await highlighter.highlightByID(highlighter.config.selectName, map, true, true);
+          pushToast(`${count} élément(s) trouvé(s)`, 'info');
+        }
+      } catch (e) {
+        pushToast(e instanceof Error ? e.message : 'Recherche impossible', 'error');
+      }
+    },
+    [components, searchText, pushToast],
+  );
+
+  // --- Métré (QTO) : nombre d'éléments par catégorie IFC ---
+  const computeQTO = useCallback(async () => {
+    if (loadedModels.length === 0) {
+      pushToast('Aucun modèle chargé', 'error');
+      return;
+    }
+    try {
+      const counts: Record<string, number> = {};
+      for (const { model } of loadedModels) {
+        const byCat = await model.getItemsOfCategories([/.+/]);
+        for (const [cat, ids] of Object.entries(byCat)) counts[cat] = (counts[cat] ?? 0) + ids.length;
+      }
+      const rows = Object.entries(counts)
+        .map(([category, count]) => ({ category, count }))
+        .sort((a, b) => b.count - a.count);
+      setQtoRows(rows);
+      setQtoOpen(true);
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : 'Métré indisponible', 'error');
+    }
+  }, [loadedModels, pushToast]);
+
   // --- Export ---
   const screenshot = useCallback(() => {
     const canvas = world?.renderer?.three.domElement;
@@ -453,7 +522,7 @@ const IFCViewer: FC = () => {
         case 'c': setClipActive((v) => !v); break;
         case 'm': toggleMeasure('length'); break;
         case 'i': isolateSelection(); break;
-        case 'escape': setOpenMenu(null); setClipActive(false); setMeasureMode('none'); setHelpOpen(false); break;
+        case 'escape': setOpenMenu(null); setClipActive(false); setMeasureMode('none'); setHelpOpen(false); setQtoOpen(false); break;
         default: return;
       }
     };
@@ -698,6 +767,39 @@ const IFCViewer: FC = () => {
 
       <aside className="viewer-left">
         <div className="panel-title">Structure &amp; modèles</div>
+        <form
+          className="viewer-search"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void runSearch('highlight');
+          }}
+        >
+          <input
+            type="search"
+            list="viewer-categories"
+            className="search-input"
+            placeholder="Rechercher (nom, catégorie IFC)…"
+            aria-label="Rechercher un élément"
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+          />
+          <button type="submit" className="search-btn" title="Surligner et zoomer sur les résultats">
+            Chercher
+          </button>
+          <button
+            type="button"
+            className="search-btn"
+            title="N’afficher que les résultats"
+            onClick={() => void runSearch('isolate')}
+          >
+            Isoler
+          </button>
+          <datalist id="viewer-categories">
+            {categories.map((c) => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
+        </form>
         <div ref={leftPanelRef} className="panel-body" />
       </aside>
 
@@ -715,6 +817,7 @@ const IFCViewer: FC = () => {
         <button className={`tool-btn ${measureMode === 'length' ? 'active' : ''}`} aria-pressed={measureMode === 'length'} title="Mesure de distance : double-clic (tap) pour poser deux points (M)" onClick={() => toggleMeasure('length')}>Mesure</button>
         <button className="tool-btn" title="N’afficher que la sélection (I)" onClick={isolateSelection}>Isoler</button>
         <button className="tool-btn" title="Réafficher tous les éléments masqués" onClick={showAll}>Tout afficher</button>
+        <button className="tool-btn" title="Métré : nombre d’éléments par catégorie IFC" onClick={() => void computeQTO()}>Métré</button>
         <span className="footer-hint">
           {clipActive || measureMode !== 'none'
             ? 'Double-clic / tap sur la vue'
@@ -766,6 +869,47 @@ const IFCViewer: FC = () => {
               <span><kbd>M</kbd> mesure</span>
               <span><kbd>I</kbd> isoler</span>
               <span><kbd>Échap</kbd> annuler</span>
+            </div>
+          </div>
+        </>
+      )}
+
+      {qtoOpen && (
+        <>
+          <button
+            className="help-backdrop"
+            aria-label="Fermer le métré"
+            onClick={() => setQtoOpen(false)}
+          />
+          <div
+            className="viewer-help viewer-qto"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Métré par catégorie IFC"
+          >
+            <div className="help-head">
+              <span>Métré · {qtoRows.reduce((n, r) => n + r.count, 0)} élément(s)</span>
+              <button className="help-close" aria-label="Fermer le métré" onClick={() => setQtoOpen(false)}>
+                ✕
+              </button>
+            </div>
+            <div className="qto-body">
+              <table className="qto-table">
+                <thead>
+                  <tr>
+                    <th>Catégorie IFC</th>
+                    <th>Nb</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {qtoRows.map((r) => (
+                    <tr key={r.category}>
+                      <td>{r.category}</td>
+                      <td>{r.count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         </>

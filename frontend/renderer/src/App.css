@@ -453,3 +453,72 @@
   font-size: 11px;
   color: var(--td-ink);
 }
+
+/* Barre de recherche / filtre (sidebar gauche) */
+.viewer-search {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(55, 212, 238, 0.12);
+}
+.search-input {
+  flex: 1 1 100%;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(55, 212, 238, 0.25);
+  color: var(--td-ink);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+.search-input::placeholder {
+  color: var(--td-ink-muted);
+}
+.search-btn {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(55, 212, 238, 0.22);
+  color: var(--td-ink);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.search-btn:hover {
+  background: rgba(55, 212, 238, 0.12);
+}
+
+/* Métré (QTO) — réutilise la coquille .viewer-help */
+.viewer-qto {
+  display: flex;
+  flex-direction: column;
+  max-height: min(70vh, 520px);
+}
+.qto-body {
+  overflow: auto;
+}
+.qto-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.qto-table th,
+.qto-table td {
+  text-align: left;
+  padding: 6px 14px;
+  border-bottom: 1px solid rgba(55, 212, 238, 0.1);
+}
+.qto-table th {
+  position: sticky;
+  top: 0;
+  background: #0f1d38;
+  color: var(--td-ink-muted);
+  font-weight: 600;
+}
+.qto-table th:last-child,
+.qto-table td:last-child {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--td-cyan);
+}
