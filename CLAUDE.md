@@ -30,6 +30,7 @@ types installés (`node_modules/@thatopen/*/dist/index.d.ts`) et revalider `buil
 - Chargement : `ifcLoader.load(buffer, coordinate, name)` (IFC→fragments) ou `fragments.core.load(buffer,{modelId,camera})` (.frag).
   Les modèles se **montent dans la scène** via l'event `fragments.list.onItemSet` (`model.useCamera`, `scene.three.add(model.object)`, `fragments.core.update(true)`).
 - Renderer : **`OBF.PostproductionRenderer`** (PAS `SimpleRenderer`) — couche CSS2D indispensable aux mesures + `preserveDrawingBuffer:true` pour la capture PNG ; postproduction (contours/AO) en option (menu Vue, défaut OFF car peut masquer des meshes instanciés selon le GPU).
+- **De-branding** : `world.renderer.showLogo = false` dans `initRenderer` (API officielle). ⚠️ Le CSS `thatopen-logo{display:none}` seul NE masque PAS le logo « That Open Company » — toujours utiliser `showLogo`.
 - Sélection : `OBF.Highlighter` (`setup({world})`, `events[selectName].onHighlight/onClear` → `ModelIdMap`) ; survol `OBF.Hoverer` ; visibilité `OBC.Hider` ; mesures `OBF.{Length,Area,Angle,Volume}Measurement`.
 - Panneaux prêts : `CUI.tables.spatialTree`, `tables.modelsList`, `tables.itemsData` ; `BUI.Manager.init()` + `CUI.Manager.init()` requis.
 

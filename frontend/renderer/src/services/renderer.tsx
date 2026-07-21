@@ -46,6 +46,9 @@ export const initRenderer = async (container: HTMLElement): Promise<ViewerHandle
   world.renderer = new OBF.PostproductionRenderer(components, container, {
     preserveDrawingBuffer: true,
   });
+  // De-branding : API officielle pour ne PAS afficher le logo « That Open Company »
+  // (règle générale, appliquée à tout monde créé ici — le CSS seul ne suffisait pas).
+  world.renderer.showLogo = false;
   world.camera = new OBC.OrthoPerspectiveCamera(components);
 
   components.init();
