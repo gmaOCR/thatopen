@@ -210,3 +210,72 @@
     background-position: 140% 0;
   }
 }
+
+/* Toasts (feedback) */
+.viewer-toasts {
+  position: absolute;
+  bottom: 58px;
+  right: 16px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.toast {
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--td-ink);
+  background: #0f1d38;
+  border: 1px solid rgba(55, 212, 238, 0.4);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  max-width: 320px;
+  animation: toast-in 0.2s ease;
+}
+
+.toast-error {
+  border-color: rgba(255, 107, 107, 0.6);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Responsive : sidebars réduites, puis masquées sur mobile (vue 3D plein écran). */
+@media (max-width: 1024px) {
+  .app-container {
+    grid-template-columns: 240px 1fr 280px;
+  }
+}
+
+@media (max-width: 720px) {
+  .app-container {
+    grid-template-columns: 1fr;
+    grid-template-rows: 52px 1fr auto;
+    grid-template-areas:
+      'topbar'
+      'viewport'
+      'footer';
+  }
+  .viewer-left,
+  .viewer-right {
+    display: none;
+  }
+  .viewer-menus,
+  .viewer-footer {
+    flex-wrap: wrap;
+  }
+  .viewer-footer {
+    height: auto;
+    padding: 6px 10px;
+  }
+}
