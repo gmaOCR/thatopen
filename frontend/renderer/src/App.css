@@ -1,28 +1,36 @@
 .app,
 .app-container {
-  width: 100vw;
+  width: 100%;
   height: 100vh;
+  height: 100dvh; /* viewport visible : la barre d'URL mobile ne masque plus le footer */
   overflow: hidden;
+  overscroll-behavior: none; /* pas de pull-to-refresh / bounce parasite sur la 3D */
 }
 
 .app-container {
   display: grid;
   grid-template-columns: 300px 1fr 340px;
-  grid-template-rows: 52px 1fr 46px;
+  /* rangées auto (min-height sur topbar/footer) : laissent la place aux safe-areas
+     — encoche en haut, barre de navigation Android / home indicator en bas (PWA). */
+  grid-template-rows: auto 1fr auto;
   grid-template-areas:
-    "topbar topbar topbar"
-    "left viewport right"
-    "footer footer footer";
+    'topbar topbar topbar'
+    'left viewport right'
+    'footer footer footer';
   background: var(--td-navy-950);
 }
 
 /* Topbar + menus */
 .viewer-topbar {
   grid-area: topbar;
+  position: relative; /* ancre le panneau de menus mobile (top: 100%) */
   display: flex;
   align-items: center;
   gap: 18px;
-  padding: 0 16px;
+  min-height: 52px;
+  /* padding haut/latéral = safe-areas (encoche, notch paysage), 0 hors PWA. */
+  padding: env(safe-area-inset-top) max(16px, env(safe-area-inset-right)) 0
+    max(16px, env(safe-area-inset-left));
   background: var(--td-navy-900);
   border-bottom: 1px solid rgba(55, 212, 238, 0.18);
   z-index: 20;
@@ -167,6 +175,12 @@
   grid-area: viewport;
   position: relative;
   overflow: hidden;
+  /* Les gestes tactiles appartiennent à camera-controls (orbit/pan/zoom) : on coupe
+     le pinch-zoom / double-tap-zoom / scroll par défaut du navigateur qui les gênent. */
+  touch-action: none;
+}
+.viewer-canvas canvas {
+  touch-action: none;
 }
 
 /* Toolbar bas */
@@ -175,7 +189,11 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 0 14px;
+  min-height: 46px;
+  /* padding bas = barre de navigation Android / home indicator iOS (0 hors PWA) :
+     évite que les boutons (coupe, mesure…) passent DERRIÈRE la barre système. */
+  padding: 0 max(14px, env(safe-area-inset-right)) env(safe-area-inset-bottom)
+    max(14px, env(safe-area-inset-left));
   background: var(--td-navy-900);
   border-top: 1px solid rgba(55, 212, 238, 0.18);
 }
@@ -291,17 +309,28 @@
 @media (max-width: 720px) {
   .app-container {
     grid-template-columns: 1fr;
-    grid-template-rows: 52px 1fr auto;
+    grid-template-rows: auto 1fr auto;
     grid-template-areas:
       'topbar'
       'viewport'
       'footer';
   }
+  /* Topbar compacte : moins d'espacement, marque abrégée, statut masqué (place
+     pour les boutons ☰ / ⓘ / Menu / ?). */
+  .viewer-topbar {
+    gap: 8px;
+  }
+  .brand-suffix {
+    display: none;
+  }
+  .viewer-status {
+    display: none;
+  }
   /* Sidebars en drawers off-canvas, ouverts via ☰ / ⓘ. */
   .viewer-left,
   .viewer-right {
     position: fixed;
-    top: 52px;
+    top: calc(52px + env(safe-area-inset-top));
     bottom: 0;
     width: 86%;
     max-width: 340px;
@@ -327,13 +356,56 @@
   .drawer-backdrop {
     display: block;
   }
-  .viewer-menus,
-  .viewer-footer {
-    flex-wrap: wrap;
+  /* Les 7 menus (sinon coupés dans la rangée fixe) deviennent un panneau déroulant
+     sous la topbar, ouvert par le bouton « Menu ». */
+  .viewer-menus {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    padding: 6px;
+    background: var(--td-navy-900);
+    border-bottom: 1px solid rgba(55, 212, 238, 0.18);
+    max-height: 70dvh;
+    overflow: auto;
+    display: none;
+    z-index: 30;
+  }
+  .viewer-menus.open {
+    display: flex;
+  }
+  .menu {
+    width: 100%;
+  }
+  .menu-btn {
+    width: 100%;
+    text-align: left;
+  }
+  /* Sous-menu en expansion inline (pas de popover absolu sur mobile). */
+  .menu-dropdown {
+    position: static;
+    min-width: 0;
+    margin: 0 0 4px;
+    box-shadow: none;
   }
   .viewer-footer {
-    height: auto;
-    padding: 6px 10px;
+    flex-wrap: wrap;
+    padding-top: 6px;
+    padding-bottom: max(6px, env(safe-area-inset-bottom));
+  }
+  /* Toasts au-dessus du footer (qui peut wrapper), pleine largeur. */
+  .viewer-toasts {
+    top: 60px;
+    bottom: auto;
+    left: 12px;
+    right: 12px;
+    align-items: stretch;
+  }
+  .toast {
+    max-width: none;
   }
 }
 

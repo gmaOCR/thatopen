@@ -65,6 +65,7 @@ const IFCViewer: FC = () => {
   const [leftOpen, setLeftOpen] = useState(false);
   const [rightOpen, setRightOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [menusOpen, setMenusOpen] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [categories, setCategories] = useState<string[]>([]);
   const [qtoOpen, setQtoOpen] = useState(false);
@@ -83,6 +84,7 @@ const IFCViewer: FC = () => {
   const itemsUpdate = useRef<ItemsUpdate | null>(null);
   const spatialUpdate = useRef<SpatialUpdate | null>(null);
   const toastId = useRef(0);
+  const lastTouchTapAt = useRef(0); // horodatage du dernier tap tactile (anti-dblclick synthétique)
 
   const pushToast = useCallback((msg: string, type: 'error' | 'info' = 'info') => {
     const id = (toastId.current += 1);
@@ -238,7 +240,11 @@ const IFCViewer: FC = () => {
     clipper.setup();
     clipper.enabled = clipActive;
     if (!clipActive) return;
-    const onDblClick = () => void clipper.create(world);
+    const onDblClick = (e: MouseEvent) => {
+      // Ignore le dblclick synthétisé par un double-tap tactile (le tap gère déjà le point).
+      if (e.timeStamp - lastTouchTapAt.current < 700) return;
+      void clipper.create(world);
+    };
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'Delete' || e.code === 'Backspace') void clipper.delete(world);
     };
@@ -261,7 +267,10 @@ const IFCViewer: FC = () => {
     const tool = components.get(MEASURE_TOOLS[measureMode] as typeof OBF.LengthMeasurement);
     tool.world = world;
     tool.enabled = true;
-    const onDblClick = () => void tool.create();
+    const onDblClick = (e: MouseEvent) => {
+      if (e.timeStamp - lastTouchTapAt.current < 700) return; // cf. coupe : anti-dblclick tactile
+      void tool.create();
+    };
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'Delete' || e.code === 'Backspace') void tool.delete();
     };
@@ -289,6 +298,7 @@ const IFCViewer: FC = () => {
     };
     const onUp = (e: PointerEvent) => {
       if (e.pointerType !== 'touch' || !down) return;
+      lastTouchTapAt.current = e.timeStamp; // neutralise le dblclick synthétique qui suivrait
       const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
       down = null;
       if (moved > 8) return; // déplacement (pan), pas un tap
@@ -667,7 +677,9 @@ const IFCViewer: FC = () => {
       ref={appRef}
     >
       <header className="viewer-topbar">
-        <span className="viewer-brand">TechData · IFC Viewer</span>
+        <span className="viewer-brand">
+          TechData<span className="brand-suffix"> · IFC Viewer</span>
+        </span>
         <button
           className="drawer-btn"
           aria-label="Panneaux structure et modèles"
@@ -690,7 +702,20 @@ const IFCViewer: FC = () => {
         >
           ⓘ
         </button>
-        <nav className="viewer-menus">
+        <button
+          className="drawer-btn menu-toggle"
+          aria-label="Menu des commandes"
+          title="Menus (Fichier, Vue, Outils…)"
+          aria-expanded={menusOpen}
+          onClick={() => {
+            setLeftOpen(false);
+            setRightOpen(false);
+            setMenusOpen((v) => !v);
+          }}
+        >
+          Menu
+        </button>
+        <nav className={`viewer-menus${menusOpen ? ' open' : ''}`}>
           {menus.map((menu) => (
             <div className="menu" key={menu.label}>
               <button
@@ -711,6 +736,7 @@ const IFCViewer: FC = () => {
                         onClick={() => {
                           item.onClick();
                           setOpenMenu(null);
+                          setMenusOpen(false);
                         }}
                         disabled={item.disabled}
                       >
@@ -859,6 +885,14 @@ const IFCViewer: FC = () => {
               <div>
                 <dt>Coupe / Mesure</dt>
                 <dd>Activer l’outil, puis double-clic (tap) pour poser un point · Suppr pour effacer</dd>
+              </div>
+              <div>
+                <dt>Menus</dt>
+                <dd>Fichier, Vue, Outils… — via le bouton « Menu » sur mobile</dd>
+              </div>
+              <div>
+                <dt>Panneaux</dt>
+                <dd>☰ structure &amp; modèles · ⓘ propriétés · barre du bas = outils rapides</dd>
               </div>
             </dl>
             <div className="help-keys">
