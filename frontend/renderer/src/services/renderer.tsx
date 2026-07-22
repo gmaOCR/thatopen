@@ -49,6 +49,12 @@ export const initRenderer = async (container: HTMLElement): Promise<ViewerHandle
   // De-branding : API officielle pour ne PAS afficher le logo « That Open Company »
   // (règle générale, appliquée à tout monde créé ici — le CSS seul ne suffisait pas).
   world.renderer.showLogo = false;
+  // ponytail: pixelRatio forcé à 1 — le picker GPU de ThatOpen (FastModelPicker)
+  // dimensionne son render-target en pixels CSS mais lit à une position mal
+  // corrigée du devicePixelRatio → sur hidpi (mobiles DSF 2-3, écrans retina) la
+  // sélection / coupe / mesure au clic-tap ne pickent rien. Rendu 1:1 = pick fiable.
+  // ceiling connu : léger flou sur hidpi ; upgrade si ThatOpen corrige le picker.
+  world.renderer.three.setPixelRatio(1);
   world.camera = new OBC.OrthoPerspectiveCamera(components);
 
   components.init();
