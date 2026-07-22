@@ -7,6 +7,7 @@ import * as CUI from '@thatopen/ui-obc';
 import { useRenderer } from '../../hooks/useRenderer';
 import { useIFCLoader } from '../../hooks/useIFCLoader';
 import { mergeMaps, countIds, escapeRegExp } from './queries';
+import { loadSavedViews, persistSavedViews, type SavedView } from './views';
 
 // ponytail: IFC brut au démarrage ; pré-conversion .frag = optimisation ultérieure.
 const DEFAULT_MODEL_URL = '/models/demo.ifc';
@@ -70,6 +71,7 @@ const IFCViewer: FC = () => {
   const [categories, setCategories] = useState<string[]>([]);
   const [qtoOpen, setQtoOpen] = useState(false);
   const [qtoRows, setQtoRows] = useState<{ category: string; count: number }[]>([]);
+  const [savedViews, setSavedViews] = useState<SavedView[]>(() => loadSavedViews());
 
   const { components, world, isInitialized } = useRenderer(containerRef);
   const { loadIFC, loadIFCBuffer, loadFragments, loadedModels } = useIFCLoader(
@@ -302,6 +304,12 @@ const IFCViewer: FC = () => {
       const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
       down = null;
       if (moved > 8) return; // déplacement (pan), pas un tap
+      // Rejoue un pointermove aux coordonnées du tap : le raycaster ThatOpen (Mouse)
+      // calcule sa position depuis le dernier pointermove ; sans ça, coupe/mesure
+      // pouvaient rater la cible au tactile (le tap ne bouge pas → position périmée).
+      el.dispatchEvent(
+        new PointerEvent('pointermove', { clientX: e.clientX, clientY: e.clientY, bubbles: true }),
+      );
       if (clipActive) {
         void components.get(OBC.Clipper).create(world);
       } else if (measureMode !== 'none') {
@@ -350,6 +358,49 @@ const IFCViewer: FC = () => {
     const next = world.camera.projection.current === 'Perspective' ? 'Orthographic' : 'Perspective';
     void world.camera.projection.set(next);
   }, [world]);
+
+  // --- Vues sauvegardées (bookmarks caméra) : capture position/cible/projection. ---
+  const saveCurrentView = useCallback(() => {
+    if (!world) return;
+    const pos = world.camera.controls.getPosition(new THREE.Vector3());
+    const tgt = world.camera.controls.getTarget(new THREE.Vector3());
+    const name = window.prompt('Nom de la vue :', `Vue ${savedViews.length + 1}`)?.trim();
+    if (!name) return;
+    const view: SavedView = {
+      id: crypto.randomUUID(),
+      name,
+      position: [pos.x, pos.y, pos.z],
+      target: [tgt.x, tgt.y, tgt.z],
+      projection: world.camera.projection.current,
+    };
+    setSavedViews((prev) => {
+      const next = [...prev, view];
+      persistSavedViews(next);
+      return next;
+    });
+    pushToast('Vue enregistrée', 'info');
+  }, [world, savedViews.length, pushToast]);
+
+  const restoreView = useCallback(
+    (v: SavedView) => {
+      if (!world) return;
+      if (world.camera.projection.current !== v.projection) {
+        void world.camera.projection.set(v.projection);
+      }
+      const [px, py, pz] = v.position;
+      const [tx, ty, tz] = v.target;
+      void world.camera.controls.setLookAt(px, py, pz, tx, ty, tz, true);
+    },
+    [world],
+  );
+
+  const deleteView = useCallback((id: string) => {
+    setSavedViews((prev) => {
+      const next = prev.filter((v) => v.id !== id);
+      persistSavedViews(next);
+      return next;
+    });
+  }, []);
 
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) void appRef.current?.requestFullscreen();
@@ -540,15 +591,21 @@ const IFCViewer: FC = () => {
     return () => window.removeEventListener('keydown', onKey);
   }, [fitView, recenter, toggleProjection, toggleMeasure, isolateSelection]);
 
-  // Ferme le menu ouvert au clic en dehors (a11y : pas de handler sur un div statique).
+  // Ferme les menus dès qu'on presse ailleurs (y compris dans la scène 3D).
+  // pointerdown (pas mousedown) : fiable au tactile, où le mousedown synthétique
+  // est souvent supprimé par touch-action:none sur le canvas.
   useEffect(() => {
-    if (!openMenu) return;
-    const onDown = (e: MouseEvent) => {
-      if (!(e.target as HTMLElement).closest('.viewer-menus')) setOpenMenu(null);
+    if (!openMenu && !menusOpen) return;
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as HTMLElement;
+      if (!t.closest('.viewer-menus') && !t.closest('.menu-toggle')) {
+        setOpenMenu(null);
+        setMenusOpen(false);
+      }
     };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [openMenu]);
+    document.addEventListener('pointerdown', onDown);
+    return () => document.removeEventListener('pointerdown', onDown);
+  }, [openMenu, menusOpen]);
 
   const menus: MenuDef[] = [
     {
@@ -686,6 +743,7 @@ const IFCViewer: FC = () => {
           title="Structure & modèles"
           onClick={() => {
             setRightOpen(false);
+            setMenusOpen(false);
             setLeftOpen((v) => !v);
           }}
         >
@@ -697,6 +755,7 @@ const IFCViewer: FC = () => {
           title="Propriétés de la sélection"
           onClick={() => {
             setLeftOpen(false);
+            setMenusOpen(false);
             setRightOpen((v) => !v);
           }}
         >
@@ -826,6 +885,41 @@ const IFCViewer: FC = () => {
             ))}
           </datalist>
         </form>
+        <div className="viewer-views">
+          <button
+            type="button"
+            className="search-btn views-save"
+            title="Enregistrer la position caméra actuelle"
+            onClick={saveCurrentView}
+          >
+            ＋ Enregistrer la vue
+          </button>
+          {savedViews.length > 0 && (
+            <ul className="views-list">
+              {savedViews.map((v) => (
+                <li key={v.id}>
+                  <button
+                    type="button"
+                    className="view-restore"
+                    title="Aller à cette vue"
+                    onClick={() => restoreView(v)}
+                  >
+                    {v.name}
+                  </button>
+                  <button
+                    type="button"
+                    className="view-del"
+                    aria-label={`Supprimer la vue ${v.name}`}
+                    title="Supprimer"
+                    onClick={() => deleteView(v.id)}
+                  >
+                    ✕
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
         <div ref={leftPanelRef} className="panel-body" />
       </aside>
 
