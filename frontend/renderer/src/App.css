@@ -561,6 +561,59 @@
   background: rgba(55, 212, 238, 0.12);
 }
 
+/* Vues sauvegardées (bookmarks caméra) */
+.viewer-views {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(55, 212, 238, 0.12);
+}
+.views-save {
+  width: 100%;
+}
+.views-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.views-list li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.view-restore {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(55, 212, 238, 0.18);
+  color: var(--td-ink);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12.5px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.view-restore:hover {
+  background: rgba(55, 212, 238, 0.12);
+}
+.view-del {
+  flex: none;
+  background: transparent;
+  border: 1px solid rgba(255, 107, 107, 0.35);
+  color: #ff8f8f;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.view-del:hover {
+  background: rgba(255, 107, 107, 0.15);
+}
+
 /* Métré (QTO) — réutilise la coquille .viewer-help */
 .viewer-qto {
   display: flex;
