@@ -28,6 +28,11 @@ export default tseslint.config(
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
     },
   },
+  // Tests E2E Playwright + config : contexte Node (process.env), pas navigateur.
+  {
+    files: ['e2e/**/*.ts', 'playwright.config.ts'],
+    languageOptions: { globals: globals.node },
+  },
   // Doit rester en dernier : désactive les règles ESLint en conflit avec Prettier.
   prettier,
 )
