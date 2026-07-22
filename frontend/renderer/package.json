@@ -15,7 +15,9 @@
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "e2e": "playwright test",
+    "e2e:mobile": "playwright test --project=mobile"
   },
   "dependencies": {
     "@thatopen/components": "3.4.6",
@@ -31,6 +33,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.19.0",
+    "@playwright/test": "^1.61.1",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",

@@ -16,6 +16,12 @@ dist
 dist-ssr
 *.local
 
+# Playwright (E2E) — artefacts locaux
+frontend/renderer/test-results
+frontend/renderer/playwright-report
+frontend/renderer/blob-report
+frontend/renderer/playwright/.cache
+
 # Claude Code : ignorer les worktrees locaux, garder agents/skills/settings
 .claude/worktrees/
 

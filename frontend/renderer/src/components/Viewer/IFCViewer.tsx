@@ -293,7 +293,6 @@ const IFCViewer: FC = () => {
     if (!components || !world) return;
     const el = world.renderer?.three.domElement;
     if (!el) return;
-    const highlighter = components.get(OBF.Highlighter);
     let down: { x: number; y: number } | null = null;
     const onDown = (e: PointerEvent) => {
       if (e.pointerType === 'touch') down = { x: e.clientX, y: e.clientY };
@@ -304,9 +303,14 @@ const IFCViewer: FC = () => {
       const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
       down = null;
       if (moved > 8) return; // déplacement (pan), pas un tap
-      // Rejoue un pointermove aux coordonnées du tap : le raycaster ThatOpen (Mouse)
-      // calcule sa position depuis le dernier pointermove ; sans ça, coupe/mesure
-      // pouvaient rater la cible au tactile (le tap ne bouge pas → position périmée).
+      // Position NDC (-1..1) du tap, calculée depuis les bornes du canvas.
+      const rect = el.getBoundingClientRect();
+      const ndc = new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      // Le raycaster ThatOpen lit sinon this.mouse.position, mise à jour par des
+      // mousemove — jamais émis par un tap tactile. On lui passe donc le NDC explicite.
       el.dispatchEvent(
         new PointerEvent('pointermove', { clientX: e.clientX, clientY: e.clientY, bubbles: true }),
       );
@@ -315,7 +319,27 @@ const IFCViewer: FC = () => {
       } else if (measureMode !== 'none') {
         void components.get(MEASURE_TOOLS[measureMode] as typeof OBF.LengthMeasurement).create();
       } else {
-        void highlighter.highlight(highlighter.config.selectName);
+        // Sélection : pick fragments explicite au NDC du tap, puis surlignage par ID
+        // (contourne la dépendance du Highlighter aux événements souris absents au tactile).
+        void (async () => {
+          const caster = components.get(OBC.Raycasters).get(world);
+          const hit = (await caster.castRay({ position: ndc })) as {
+            localId?: number | null;
+            fragments?: { modelId?: string };
+          } | null;
+          const highlighter = components.get(OBF.Highlighter);
+          const modelId = hit?.fragments?.modelId;
+          if (hit?.localId != null && modelId) {
+            await highlighter.highlightByID(
+              highlighter.config.selectName,
+              { [modelId]: new Set([hit.localId]) },
+              true,
+              false,
+            );
+          } else {
+            await highlighter.clear(highlighter.config.selectName);
+          }
+        })();
       }
     };
     el.addEventListener('pointerdown', onDown);
