@@ -1,5 +1,5 @@
 :root {
-  /* Palette TechData Solutions */
+  /* Palette TechData Solutions — thème sombre (défaut) */
   --td-navy-950: #060b16;
   --td-navy-900: #0b1220;
   --td-blue: #2f86dd;
@@ -7,12 +7,33 @@
   --td-ink: #eaf1fb;
   --td-ink-muted: #9db0cc;
 
-  /* Thème ThatOpen UI (panneaux CUI) forcé au branding TechData sombre.
-     !important car BUI injecte ses propres variables (violet #6528d7) APRÈS
-     ce fichier au runtime — sans ça notre override serait écrasé. */
+  /* Triplets RGB : l'alpha reste défini à l'usage (rgba(var(--x), .18)).
+     Un seul token à redéfinir bascule toutes les bordures/survols du thème. */
+  --td-accent-rgb: 55, 212, 238; /* cyan : bordures, survols */
+  --td-blue-rgb: 47, 134, 221;
+  --td-fill-rgb: 255, 255, 255; /* remplissages subtils (clair sur fond sombre) */
+  --td-shadow-rgb: 0, 0, 0;
+  --td-error-rgb: 255, 107, 107;
+  --td-surface-raised: #0f1d38; /* menus, toasts, panneaux flottants */
+  --td-on-accent: #04121f; /* texte sur aplat cyan/bleu */
+  --td-scene-bg: #0b1220; /* fond de la scène 3D */
+
+  /* Thème ThatOpen UI (panneaux CUI) forcé au branding TechData.
+     !important car BUI injecte ses propres variables APRÈS ce fichier au runtime.
+     La rampe COMPLÈTE (10→100) est redéfinie : BUI ne bascule clair/sombre que par
+     @media (prefers-color-scheme) — non pilotable — donc sans ça ses panneaux
+     suivraient l'OS et se désynchroniseraient de notre thème explicite. */
   --bim-ui_bg-base: #0b1220 !important;
   --bim-ui_bg-contrast-10: #101a2e !important;
   --bim-ui_bg-contrast-20: #16233c !important;
+  --bim-ui_bg-contrast-30: #1e2c45 !important;
+  --bim-ui_bg-contrast-40: #2a3a56 !important;
+  --bim-ui_bg-contrast-50: #3d4f6d !important;
+  --bim-ui_bg-contrast-60: #5a6c88 !important;
+  --bim-ui_bg-contrast-70: #7c8ba3 !important;
+  --bim-ui_bg-contrast-80: #a3aec1 !important;
+  --bim-ui_bg-contrast-90: #c9d2e0 !important;
+  --bim-ui_bg-contrast-100: #eaf1fb !important; /* texte */
   --bim-ui_accent-base: #37d4ee !important;
   --bim-ui_main-base: #2f86dd !important;
 
@@ -23,6 +44,43 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Thème clair — utile en extérieur / plein soleil (chantier) et en démo.
+   Piloté par data-theme sur <html> (choix explicite, persisté). */
+:root[data-theme='light'] {
+  --td-navy-950: #eef3fb; /* fond app */
+  --td-navy-900: #ffffff; /* barres & panneaux */
+  --td-blue: #1f6fc4; /* assombri : contraste sur fond clair */
+  --td-cyan: #0e8fae;
+  --td-ink: #0b1220;
+  --td-ink-muted: #4a5a74;
+
+  --td-accent-rgb: 14, 143, 174;
+  --td-blue-rgb: 31, 111, 196;
+  --td-fill-rgb: 11, 18, 32; /* remplissages subtils : sombre sur fond clair */
+  --td-shadow-rgb: 31, 45, 71;
+  --td-error-rgb: 200, 45, 45;
+  --td-surface-raised: #ffffff;
+  --td-on-accent: #ffffff;
+  --td-scene-bg: #dfe8f5;
+
+  /* Rampe BUI inversée (fond clair → texte sombre en 100). */
+  --bim-ui_bg-base: #ffffff !important;
+  --bim-ui_bg-contrast-10: #f4f7fc !important;
+  --bim-ui_bg-contrast-20: #e8eef7 !important;
+  --bim-ui_bg-contrast-30: #dbe4f0 !important;
+  --bim-ui_bg-contrast-40: #c6d2e4 !important;
+  --bim-ui_bg-contrast-50: #a7b5cb !important;
+  --bim-ui_bg-contrast-60: #8493ab !important;
+  --bim-ui_bg-contrast-70: #64738c !important;
+  --bim-ui_bg-contrast-80: #47566d !important;
+  --bim-ui_bg-contrast-90: #2b3950 !important;
+  --bim-ui_bg-contrast-100: #0b1220 !important; /* texte */
+  --bim-ui_accent-base: #0e8fae !important;
+  --bim-ui_main-base: #1f6fc4 !important;
+
+  color-scheme: light;
 }
 
 * {

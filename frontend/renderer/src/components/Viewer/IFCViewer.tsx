@@ -8,6 +8,7 @@ import { useRenderer } from '../../hooks/useRenderer';
 import { useIFCLoader } from '../../hooks/useIFCLoader';
 import { mergeMaps, countIds, escapeRegExp } from './queries';
 import { loadSavedViews, persistSavedViews, type SavedView } from './views';
+import { applyTheme, initialTheme, sceneBackground, type Theme } from '../../services/theme';
 
 // ponytail: IFC brut au démarrage ; pré-conversion .frag = optimisation ultérieure.
 const DEFAULT_MODEL_URL = '/models/demo.ifc';
@@ -72,6 +73,7 @@ const IFCViewer: FC = () => {
   const [qtoOpen, setQtoOpen] = useState(false);
   const [qtoRows, setQtoRows] = useState<{ category: string; count: number }[]>([]);
   const [savedViews, setSavedViews] = useState<SavedView[]>(() => loadSavedViews());
+  const [theme, setTheme] = useState<Theme>(() => initialTheme());
 
   const { components, world, isInitialized } = useRenderer(containerRef);
   const { loadIFC, loadIFCBuffer, loadFragments, loadedModels } = useIFCLoader(
@@ -426,6 +428,16 @@ const IFCViewer: FC = () => {
     });
   }, []);
 
+  // Bascule clair/sombre : applique les tokens CSS puis réaligne le fond de la scène 3D.
+  const toggleTheme = useCallback(() => {
+    setTheme((cur) => {
+      const next: Theme = cur === 'dark' ? 'light' : 'dark';
+      applyTheme(next);
+      if (world) world.scene.three.background = new THREE.Color(sceneBackground());
+      return next;
+    });
+  }, [world]);
+
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) void appRef.current?.requestFullscreen();
     else void document.exitFullscreen();
@@ -663,6 +675,11 @@ const IFCViewer: FC = () => {
           onClick: toggleAdvancedRender,
           title: 'Contours + occlusion ambiante (peut masquer des meshes selon le GPU)',
         },
+        {
+          label: theme === 'dark' ? '☀ Thème clair' : '☾ Thème sombre',
+          onClick: toggleTheme,
+          title: 'Bascule clair / sombre (utile en extérieur) — mémorisé',
+        },
         { label: 'Plein écran', onClick: toggleFullscreen, title: 'Bascule en plein écran' },
       ],
     },
@@ -783,7 +800,7 @@ const IFCViewer: FC = () => {
             setRightOpen((v) => !v);
           }}
         >
-          ⓘ
+          i
         </button>
         <button
           className="drawer-btn menu-toggle"
@@ -916,7 +933,7 @@ const IFCViewer: FC = () => {
             title="Enregistrer la position caméra actuelle"
             onClick={saveCurrentView}
           >
-            ＋ Enregistrer la vue
+            + Enregistrer la vue
           </button>
           {savedViews.length > 0 && (
             <ul className="views-list">
@@ -1010,7 +1027,7 @@ const IFCViewer: FC = () => {
               </div>
               <div>
                 <dt>Panneaux</dt>
-                <dd>☰ structure &amp; modèles · ⓘ propriétés · barre du bas = outils rapides</dd>
+                <dd>☰ structure &amp; modèles · « i » propriétés · barre du bas = outils rapides</dd>
               </div>
             </dl>
             <div className="help-keys">
