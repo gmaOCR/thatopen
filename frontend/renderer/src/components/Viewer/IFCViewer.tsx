@@ -9,6 +9,12 @@ import { useIFCLoader } from '../../hooks/useIFCLoader';
 import { mergeMaps, countIds, escapeRegExp } from './queries';
 import { loadSavedViews, persistSavedViews, type SavedView } from './views';
 import { applyTheme, initialTheme, sceneBackground, type Theme } from '../../services/theme';
+import {
+  annotationElement,
+  loadAnnotations,
+  persistAnnotations,
+  type Annotation,
+} from './annotations';
 
 // ponytail: IFC brut au démarrage ; pré-conversion .frag = optimisation ultérieure.
 const DEFAULT_MODEL_URL = '/models/demo.ifc';
@@ -74,6 +80,8 @@ const IFCViewer: FC = () => {
   const [qtoRows, setQtoRows] = useState<{ category: string; count: number }[]>([]);
   const [savedViews, setSavedViews] = useState<SavedView[]>(() => loadSavedViews());
   const [theme, setTheme] = useState<Theme>(() => initialTheme());
+  const [annotations, setAnnotations] = useState<Annotation[]>(() => loadAnnotations());
+  const [annotMode, setAnnotMode] = useState(false);
 
   const { components, world, isInitialized } = useRenderer(containerRef);
   const { loadIFC, loadIFCBuffer, loadFragments, loadedModels } = useIFCLoader(
@@ -287,6 +295,55 @@ const IFCViewer: FC = () => {
     };
   }, [components, world, measureMode]);
 
+  // --- Annotations 3D : note ancrée au point pické sous le curseur / doigt. ---
+  //     Le NDC explicite évite la dépendance aux mousemove (cf. sélection tactile).
+  const addAnnotationAt = useCallback(
+    async (ndc: THREE.Vector2) => {
+      if (!components || !world) return;
+      const hit = (await components.get(OBC.Raycasters).get(world).castRay({ position: ndc })) as {
+        point?: THREE.Vector3;
+      } | null;
+      if (!hit?.point) {
+        pushToast('Visez un élément de la maquette', 'error');
+        return;
+      }
+      const text = window.prompt('Texte de l’annotation :')?.trim();
+      if (!text) return;
+      const annot: Annotation = {
+        id: crypto.randomUUID(),
+        text,
+        position: [hit.point.x, hit.point.y, hit.point.z],
+      };
+      setAnnotations((prev) => {
+        const next = [...prev, annot];
+        persistAnnotations(next);
+        return next;
+      });
+      pushToast('Annotation ajoutée', 'info');
+    },
+    [components, world, pushToast],
+  );
+
+  const deleteAnnotation = useCallback((id: string) => {
+    setAnnotations((prev) => {
+      const next = prev.filter((a) => a.id !== id);
+      persistAnnotations(next);
+      return next;
+    });
+  }, []);
+
+  // Synchronise les marqueurs 3D avec la liste (création/suppression déclaratives).
+  useEffect(() => {
+    if (!components || !world) return;
+    const marker = components.get(OBF.Marker);
+    const keys = annotations.map((a) =>
+      marker.create(world, annotationElement(a.text), new THREE.Vector3(...a.position), true),
+    );
+    return () => {
+      for (const k of keys) if (k) marker.delete(k);
+    };
+  }, [components, world, annotations]);
+
   // --- Interaction tactile (mobile) : un tap = sélection, ou pose un point si un
   //     outil (coupe/mesure) est actif. Le desktop garde le clic/double-clic natif.
   //     (camera-controls gère déjà pan/zoom/rotate tactile ; le raycast lit la
@@ -316,7 +373,9 @@ const IFCViewer: FC = () => {
       el.dispatchEvent(
         new PointerEvent('pointermove', { clientX: e.clientX, clientY: e.clientY, bubbles: true }),
       );
-      if (clipActive) {
+      if (annotMode) {
+        void addAnnotationAt(ndc);
+      } else if (clipActive) {
         void components.get(OBC.Clipper).create(world);
       } else if (measureMode !== 'none') {
         void components.get(MEASURE_TOOLS[measureMode] as typeof OBF.LengthMeasurement).create();
@@ -344,13 +403,26 @@ const IFCViewer: FC = () => {
         })();
       }
     };
+    // Desktop : double-clic pose une annotation quand le mode est actif.
+    const onDblClick = (e: MouseEvent) => {
+      if (!annotMode || e.timeStamp - lastTouchTapAt.current < 700) return;
+      const rect = el.getBoundingClientRect();
+      void addAnnotationAt(
+        new THREE.Vector2(
+          ((e.clientX - rect.left) / rect.width) * 2 - 1,
+          -((e.clientY - rect.top) / rect.height) * 2 + 1,
+        ),
+      );
+    };
+    el.addEventListener('dblclick', onDblClick);
     el.addEventListener('pointerdown', onDown);
     el.addEventListener('pointerup', onUp);
     return () => {
+      el.removeEventListener('dblclick', onDblClick);
       el.removeEventListener('pointerdown', onDown);
       el.removeEventListener('pointerup', onUp);
     };
-  }, [components, world, clipActive, measureMode]);
+  }, [components, world, clipActive, measureMode, annotMode, addAnnotationAt]);
 
   const toggleMeasure = useCallback(
     (m: Exclude<MeasureMode, 'none'>) => setMeasureMode((cur) => (cur === m ? 'none' : m)),
@@ -619,7 +691,7 @@ const IFCViewer: FC = () => {
         case 'c': setClipActive((v) => !v); break;
         case 'm': toggleMeasure('length'); break;
         case 'i': isolateSelection(); break;
-        case 'escape': setOpenMenu(null); setClipActive(false); setMeasureMode('none'); setHelpOpen(false); setQtoOpen(false); break;
+        case 'escape': setOpenMenu(null); setClipActive(false); setMeasureMode('none'); setAnnotMode(false); setHelpOpen(false); setQtoOpen(false); break;
         default: return;
       }
     };
@@ -755,6 +827,15 @@ const IFCViewer: FC = () => {
     {
       label: 'Outils',
       items: [
+        {
+          label: `${annotMode ? '✓ ' : ''}Annoter (note 3D)`,
+          onClick: () => {
+            setClipActive(false);
+            setMeasureMode('none');
+            setAnnotMode((v) => !v);
+          },
+          title: 'Active le mode, puis double-clic (ou tap) sur la maquette pour poser une note',
+        },
         {
           label: `${clipActive ? '✓ ' : ''}Plan de coupe`,
           onClick: () => setClipActive((v) => !v),
@@ -960,6 +1041,39 @@ const IFCViewer: FC = () => {
               ))}
             </ul>
           )}
+          {annotations.length > 0 && (
+            <ul className="views-list annots-list">
+              {annotations.map((a) => (
+                <li key={a.id}>
+                  <button
+                    type="button"
+                    className="view-restore"
+                    title="Aller à cette annotation"
+                    onClick={() =>
+                      void world?.camera.controls.setLookAt(
+                        a.position[0] + 8,
+                        a.position[1] + 8,
+                        a.position[2] + 8,
+                        ...a.position,
+                        true,
+                      )
+                    }
+                  >
+                    {a.text}
+                  </button>
+                  <button
+                    type="button"
+                    className="view-del"
+                    aria-label={`Supprimer l’annotation ${a.text}`}
+                    title="Supprimer"
+                    onClick={() => deleteAnnotation(a.id)}
+                  >
+                    ✕
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
         <div ref={leftPanelRef} className="panel-body" />
       </aside>
@@ -979,8 +1093,20 @@ const IFCViewer: FC = () => {
         <button className="tool-btn" title="N’afficher que la sélection (I)" onClick={isolateSelection}>Isoler</button>
         <button className="tool-btn" title="Réafficher tous les éléments masqués" onClick={showAll}>Tout afficher</button>
         <button className="tool-btn" title="Métré : nombre d’éléments par catégorie IFC" onClick={() => void computeQTO()}>Métré</button>
+        <button
+          className={`tool-btn ${annotMode ? 'active' : ''}`}
+          aria-pressed={annotMode}
+          title="Annoter : double-clic (tap) sur la maquette pour poser une note 3D"
+          onClick={() => {
+            setClipActive(false);
+            setMeasureMode('none');
+            setAnnotMode((v) => !v);
+          }}
+        >
+          Annoter
+        </button>
         <span className="footer-hint">
-          {clipActive || measureMode !== 'none'
+          {clipActive || measureMode !== 'none' || annotMode
             ? 'Double-clic / tap sur la vue'
             : 'Clinique médicale © buildingSMART · CC-BY 4.0'}
         </span>
