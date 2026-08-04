@@ -15,6 +15,16 @@ import {
   persistAnnotations,
   type Annotation,
 } from './annotations';
+import { boxesByGuid, diffGuids, findMoved } from './compare';
+
+// Styles de comparaison : couleurs sémantiques (ajouté / supprimé / déplacé),
+// distinctes de l'accent de sélection.
+const DIFF_STYLES = {
+  'diff-added': 0x3ecf8e,
+  'diff-removed': 0xe0533f,
+  'diff-moved': 0xe0b341,
+} as const;
+type DiffKind = keyof typeof DIFF_STYLES;
 
 // ponytail: IFC brut au démarrage ; pré-conversion .frag = optimisation ultérieure.
 const DEFAULT_MODEL_URL = '/models/demo.ifc';
@@ -82,6 +92,13 @@ const IFCViewer: FC = () => {
   const [theme, setTheme] = useState<Theme>(() => initialTheme());
   const [annotations, setAnnotations] = useState<Annotation[]>(() => loadAnnotations());
   const [annotMode, setAnnotMode] = useState(false);
+  const [diff, setDiff] = useState<{
+    added: number;
+    removed: number;
+    moved: number;
+    unchanged: number;
+  } | null>(null);
+  const compareInputRef = useRef<HTMLInputElement>(null);
 
   const { components, world, isInitialized } = useRenderer(containerRef);
   const { loadIFC, loadIFCBuffer, loadFragments, loadedModels } = useIFCLoader(
@@ -442,6 +459,88 @@ const IFCViewer: FC = () => {
     }
   };
 
+  // --- Comparaison de versions (diff par GUID IFC entre 2 modèles) ---
+  //     Le GUID est stable d'une révision à l'autre : c'est la clé du rapprochement.
+  const runCompare = useCallback(
+    async (file: File) => {
+      if (!components || !world) return;
+      const base = loadedModels[0]?.model;
+      if (!base) {
+        pushToast("Chargez d'abord une maquette de référence", 'error');
+        return;
+      }
+      try {
+        const loaded = await loadIFC(file);
+        const next = loaded ?? loadedModels[loadedModels.length - 1]?.model;
+        if (!next || next === base) {
+          pushToast('Nouvelle version non chargée', 'error');
+          return;
+        }
+        const fragments = components.get(OBC.FragmentsManager);
+        await fragments.core.update(true);
+
+        const [baseGuids, nextGuids] = await Promise.all([base.getGuids(), next.getGuids()]);
+        const { added, removed, common } = diffGuids(baseGuids, nextGuids);
+
+        // Déplacés : compare les boîtes englobantes des GUID communs (2 requêtes batch).
+        const [baseIds, nextIds] = await Promise.all([
+          base.getLocalIdsByGuids(common),
+          next.getLocalIdsByGuids(common),
+        ]);
+        const [baseBoxes, nextBoxes] = await Promise.all([
+          base.getBoxes(baseIds.filter((v): v is number => v != null)),
+          next.getBoxes(nextIds.filter((v): v is number => v != null)),
+        ]);
+        const moved = findMoved(
+          common,
+          boxesByGuid(common, baseIds, baseBoxes),
+          boxesByGuid(common, nextIds, nextBoxes),
+        );
+
+        // Colorisation : ajouté/déplacé sur la nouvelle version, supprimé sur l'ancienne.
+        const highlighter = components.get(OBF.Highlighter);
+        for (const [name, color] of Object.entries(DIFF_STYLES)) {
+          highlighter.styles.set(name, {
+            color: new THREE.Color(color),
+            renderedFaces: 1, // FRAGS.RenderedFaces.TWO
+            opacity: 1,
+            transparent: false,
+          });
+        }
+        const paint = async (kind: DiffKind, model: typeof base, guids: string[]) => {
+          if (guids.length === 0) return;
+          const ids = (await model.getLocalIdsByGuids(guids)).filter(
+            (v): v is number => v != null,
+          );
+          if (ids.length > 0) {
+            await highlighter.highlightByID(kind, { [model.modelId]: new Set(ids) }, true, false);
+          }
+        };
+        await paint('diff-added', next, added);
+        await paint('diff-moved', next, moved);
+        await paint('diff-removed', base, removed);
+
+        setDiff({
+          added: added.length,
+          removed: removed.length,
+          moved: moved.length,
+          unchanged: common.length - moved.length,
+        });
+        pushToast(`Diff : +${added.length} / −${removed.length} / ~${moved.length}`, 'info');
+      } catch (e) {
+        pushToast(e instanceof Error ? e.message : 'Comparaison impossible', 'error');
+      }
+    },
+    [components, world, loadedModels, loadIFC, pushToast],
+  );
+
+  const clearCompare = useCallback(async () => {
+    if (!components) return;
+    const highlighter = components.get(OBF.Highlighter);
+    for (const name of Object.keys(DIFF_STYLES)) await highlighter.clear(name);
+    setDiff(null);
+  }, [components]);
+
   // --- Contrôles de vue ---
   const recenter = useCallback(() => {
     void world?.camera.controls.setLookAt(15, 15, 15, 0, 0, 0, true);
@@ -729,6 +828,21 @@ const IFCViewer: FC = () => {
           onClick: reloadDemo,
           title: 'Recharge la clinique médicale de démonstration',
         },
+        {
+          label: 'Comparer avec un IFC…',
+          onClick: () => compareInputRef.current?.click(),
+          title:
+            'Charge une autre version et colore les écarts : ajouté (vert), supprimé (rouge), déplacé (orange)',
+        },
+        ...(diff
+          ? [
+              {
+                label: '↩ Quitter la comparaison',
+                onClick: () => void clearCompare(),
+                title: 'Retire la colorisation du diff',
+              },
+            ]
+          : []),
       ],
     },
     {
@@ -945,6 +1059,17 @@ const IFCViewer: FC = () => {
             : `${loadedModels.length} modèle(s)`}
         </span>
         <input ref={fileInputRef} type="file" accept=".ifc" onChange={handleFileChange} style={{ display: 'none' }} />
+        <input
+          ref={compareInputRef}
+          type="file"
+          accept=".ifc"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void runCompare(f);
+            if (compareInputRef.current) compareInputRef.current.value = '';
+          }}
+          style={{ display: 'none' }}
+        />
         <input
           ref={bcfInputRef}
           type="file"
@@ -1208,6 +1333,25 @@ const IFCViewer: FC = () => {
             </div>
           </div>
         </>
+      )}
+
+      {diff && (
+        <div className="diff-legend" role="status" aria-live="polite">
+          <span className="diff-title">Comparaison</span>
+          <span className="diff-row">
+            <i className="diff-dot diff-added" /> {diff.added} ajouté(s)
+          </span>
+          <span className="diff-row">
+            <i className="diff-dot diff-removed" /> {diff.removed} supprimé(s)
+          </span>
+          <span className="diff-row">
+            <i className="diff-dot diff-moved" /> {diff.moved} déplacé(s)
+          </span>
+          <span className="diff-row diff-muted">{diff.unchanged} inchangé(s)</span>
+          <button className="tool-btn" onClick={() => void clearCompare()}>
+            Quitter
+          </button>
+        </div>
       )}
 
       {toasts.length > 0 && (
