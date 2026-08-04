@@ -561,6 +561,59 @@
   background: rgba(var(--td-accent-rgb), 0.12);
 }
 
+/* Légende de comparaison de versions (couleurs sémantiques, hors accent) */
+.diff-legend {
+  position: absolute;
+  top: 62px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 38;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  justify-content: center;
+  padding: 8px 14px;
+  max-width: calc(100vw - 24px);
+  border-radius: 10px;
+  font-size: 12.5px;
+  color: var(--td-ink);
+  background: var(--td-surface-raised);
+  border: 1px solid rgba(var(--td-accent-rgb), 0.35);
+  box-shadow: 0 8px 24px rgba(var(--td-shadow-rgb), 0.4);
+}
+.diff-title {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 11px;
+  color: var(--td-ink-muted);
+}
+.diff-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.diff-muted {
+  color: var(--td-ink-muted);
+}
+.diff-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.diff-dot.diff-added {
+  background: #3ecf8e;
+}
+.diff-dot.diff-removed {
+  background: #e0533f;
+}
+.diff-dot.diff-moved {
+  background: #e0b341;
+}
+
 /* Annotation 3D (marqueur CSS2D ancré dans la scène) */
 .viewer-annot {
   max-width: 220px;
