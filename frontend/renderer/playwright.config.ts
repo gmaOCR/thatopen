@@ -15,12 +15,15 @@ export default defineConfig({
     // Port dédié + strict : 3000 est parfois squatté par d'autres services homelab.
     baseURL: 'http://localhost:4319',
     trace: 'on-first-retry',
-    // WebGL headless via le GPU réel : ANGLE sur GLES/EGL pilote le VideoCore V3D
-    // (RPi5) — SwiftShader et l'EGL direct échouent sur ARM, mais gl-egl passe.
-    // Sur une machine sans GPU accessible → pas de contexte → les tests 3D se
-    // skippent proprement (garde hasWebGL dans les specs).
+    // WebGL headless — indispensable aux tests 3D (dont la régression hidpi).
+    // Le backend dépend de l'archi : sur ARM (RPi5) SwiftShader échoue, mais ANGLE
+    // sur GLES/EGL pilote le VideoCore V3D ; sur x86 (CI GitHub) SwiftShader marche.
+    // Sans contexte WebGL, les tests 3D se skippent proprement (garde hasWebGL).
     launchOptions: {
-      args: ['--use-gl=angle', '--use-angle=gl-egl', '--ignore-gpu-blocklist'],
+      args:
+        process.arch === 'arm64'
+          ? ['--use-gl=angle', '--use-angle=gl-egl', '--ignore-gpu-blocklist']
+          : ['--enable-unsafe-swiftshader', '--use-gl=angle', '--use-angle=swiftshader'],
     },
   },
   projects: [
