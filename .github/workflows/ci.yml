@@ -1,0 +1,65 @@
+name: CI (viewer)
+
+# Runners GitHub (repo public = gratuit) : la CI ne dépend pas du homelab.
+# Le WebGL des tests 3D vient de SwiftShader (x86) — cf. playwright.config.ts.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: frontend/renderer
+
+jobs:
+  check:
+    name: typecheck · lint · tests · build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: frontend/renderer/package-lock.json
+
+      - run: npm ci
+
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  e2e:
+    name: E2E Playwright (mobile + desktop)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: frontend/renderer/package-lock.json
+
+      - run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      # Garde la régression hidpi/tactile (sélection au tap sur mobile, bug S20) :
+      # projet « mobile » = Pixel 5, DSF 2.75.
+      - run: npm run e2e
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: frontend/renderer/test-results/
+          retention-days: 7
