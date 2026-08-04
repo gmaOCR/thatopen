@@ -561,6 +561,24 @@
   background: rgba(var(--td-accent-rgb), 0.12);
 }
 
+/* Annotation 3D (marqueur CSS2D ancré dans la scène) */
+.viewer-annot {
+  max-width: 220px;
+  padding: 4px 9px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--td-ink);
+  background: var(--td-surface-raised);
+  border: 1px solid rgba(var(--td-accent-rgb), 0.55);
+  box-shadow: 0 4px 14px rgba(var(--td-shadow-rgb), 0.45);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none; /* ne vole pas les gestes caméra / le picking */
+  user-select: none;
+}
+
 /* Vues sauvegardées (bookmarks caméra) */
 .viewer-views {
   padding: 8px 10px;
