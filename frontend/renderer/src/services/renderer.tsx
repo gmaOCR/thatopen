@@ -5,6 +5,7 @@ import * as CUI from "@thatopen/ui-obc";
 import * as THREE from "three";
 // Worker fragments v3 auto-hébergé (bundlé par Vite → pas de fetch unpkg au runtime).
 import fragmentsWorkerUrl from "@thatopen/fragments/worker?url";
+import { sceneBackground } from "./theme";
 
 /** Monde typé du viewer : scène + caméra ortho/perspective + renderer 2D/postpro.
  *  PostproductionRenderer fournit la couche CSS2D indispensable aux annotations
@@ -60,7 +61,8 @@ export const initRenderer = async (container: HTMLElement): Promise<ViewerHandle
   components.init();
 
   world.scene.setup();
-  world.scene.three.background = new THREE.Color(0x0b1220); // navy TechData
+  // Fond lu depuis le token CSS --td-scene-bg : suit le thème clair/sombre.
+  world.scene.three.background = new THREE.Color(sceneBackground());
   await world.camera.controls.setLookAt(15, 15, 15, 0, 0, 0);
 
   components.get(OBC.Grids).create(world);
